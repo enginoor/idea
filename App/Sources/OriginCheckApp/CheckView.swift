@@ -190,10 +190,17 @@ struct CheckView: View {
         // the first item would silently drop the rest, and firing them all
         // at once would trip the overlapping-analysis guard.
         Task { @MainActor in
+            var checked = 0
             for provider in providers {
                 if let url = await loadFileURL(from: provider) {
                     await appState.verifyFile(url)
+                    checked += 1
                 }
+            }
+            // The panel only keeps the last verdict, so a multi-file drop
+            // would otherwise look like a single check. Say what happened.
+            if checked > 1 {
+                appState.statusMessage = "Checked \(checked) files. Each result is in History."
             }
         }
     }

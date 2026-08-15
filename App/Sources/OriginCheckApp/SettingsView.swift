@@ -18,8 +18,8 @@ struct SettingsView: View {
                         Button("Save key") { appState.saveAnthropicKey(keyText) }
                             .disabled(keyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         Button("Remove key") { appState.clearAnthropicKey(); keyText = "" }
-                            .disabled(!appState.hasAnthropicKey)
-                        Text(appState.hasAnthropicKey ? "A key is stored in the Keychain." : "No key stored.")
+                            .disabled(!appState.anthropicKeyStored)
+                        Text(appState.anthropicKeyStored ? "A key is stored in the Keychain." : "No key stored.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

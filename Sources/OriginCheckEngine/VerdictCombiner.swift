@@ -67,7 +67,7 @@ public struct VerdictCombiner: Sendable {
                 effectiveTokenEstimate: characterCount / 4,
                 providersRun: providersRun,
                 evidence: evidence,
-                caveatText: Caveats.textNegative
+                caveatText: Caveats.textTooShort
             )
         }
 
@@ -121,7 +121,7 @@ public struct VerdictCombiner: Sendable {
                 effectiveTokenEstimate: characterCount / 4,
                 providersRun: providersRun,
                 evidence: evidence,
-                caveatText: Caveats.textNegative
+                caveatText: Caveats.textTooShort
             )
         }
 

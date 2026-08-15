@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct OriginCheckApp: App {
     @State private var appState = AppState()
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Scene {
         WindowGroup("OriginCheck", id: "main") {
@@ -13,6 +14,28 @@ struct OriginCheckApp: App {
                 .onChange(of: appState.localAnalyzerEnabled) { persistSettings() }
                 .onChange(of: appState.anthropicProviderEnabled) { persistSettings() }
                 .onChange(of: appState.storeRawContent) { persistSettings() }
+        }
+        .commands {
+            // The global shortcuts live here, not on the menu bar items:
+            // a menu bar menu is only active while it is open, so a
+            // keyboardShortcut on its buttons never fires.
+            CommandMenu("Verify") {
+                Button("Check Clipboard") {
+                    Task { @MainActor in
+                        openWindow(id: "main")
+                        await appState.checkClipboardText()
+                    }
+                }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+
+                Button("Verify a File...") {
+                    Task { @MainActor in
+                        openWindow(id: "main")
+                        appState.pickAndVerifyFile()
+                    }
+                }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+            }
         }
 
         MenuBarExtra("OriginCheck", systemImage: "checkmark.shield.fill") {

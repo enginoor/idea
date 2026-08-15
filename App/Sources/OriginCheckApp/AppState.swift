@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Observation
 import OriginCheckEngine
 
@@ -26,6 +27,11 @@ final class AppState {
     var localAnalyzerEnabled = true
     var anthropicProviderEnabled = false
     var storeRawContent = false
+    /// Whether a key is stored in the Keychain. This is observable state,
+    /// not a computed read: Observation cannot track the Keychain, so the
+    /// Settings caption and button would otherwise never refresh after a
+    /// save or a removal.
+    var anthropicKeyStored = false
 
     init() {
         self.keyStore = KeychainKeyStore()
@@ -39,6 +45,7 @@ final class AppState {
             : defaults.bool(forKey: "localAnalyzerEnabled")
         self.anthropicProviderEnabled = defaults.bool(forKey: "anthropicProviderEnabled")
         self.storeRawContent = defaults.bool(forKey: "storeRawContent")
+        self.anthropicKeyStored = !(keyStore.string(forKey: "anthropicApiKey") ?? "").isEmpty
     }
 
     static func historyURL() -> URL {
@@ -126,14 +133,41 @@ final class AppState {
 
     func saveAnthropicKey(_ key: String) {
         guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        try? keyStore.set(key, forKey: "anthropicApiKey")
+        do {
+            try keyStore.set(key, forKey: "anthropicApiKey")
+            anthropicKeyStored = true
+        } catch {
+            statusMessage = "Could not save the API key: \(error.localizedDescription)"
+        }
     }
 
     func clearAnthropicKey() {
         keyStore.remove(forKey: "anthropicApiKey")
+        anthropicKeyStored = false
     }
 
-    var hasAnthropicKey: Bool {
-        !(keyStore.string(forKey: "anthropicApiKey") ?? "").isEmpty
+    // MARK: Menu actions
+
+    /// Reads the clipboard and runs a text check. Shared by the menu bar
+    /// extra and the Verify menu so every entry point behaves identically.
+    func checkClipboardText() async {
+        guard let text = NSPasteboard.general.string(forType: .string),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return }
+        await analyzeText(text)
+    }
+
+    /// Shows the file picker and verifies the chosen file. The app is
+    /// activated first: a panel launched from the menu bar or a menu
+    /// command can otherwise open behind the frontmost application.
+    func pickAndVerifyFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { @MainActor in
+            await verifyFile(url)
+        }
     }
 }

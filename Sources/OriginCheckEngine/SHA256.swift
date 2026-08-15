@@ -50,11 +50,35 @@ public enum SHA256 {
 
         public mutating func update(_ data: Data) {
             totalBytes += UInt64(data.count)
-            buffer.append(contentsOf: data)
-            while buffer.count >= 64 {
-                let block = Array(buffer.prefix(64))
-                buffer.removeFirst(64)
-                Self.compress(&h, block: block)
+
+            // Process full 64-byte blocks straight from the incoming data and
+            // keep at most one partial block in the carry buffer. The previous
+            // implementation appended the whole chunk and then removed one
+            // element at a time, which is quadratic: hashing an 8 MiB file
+            // took seconds and a large video was effectively unhashable.
+            var offset = 0
+            if !buffer.isEmpty {
+                let needed = 64 - buffer.count
+                let take = min(needed, data.count)
+                if take > 0 {
+                    buffer.append(contentsOf: data[data.startIndex..<(data.startIndex + take)])
+                    offset = take
+                    if buffer.count == 64 {
+                        Self.compress(&h, block: buffer)
+                        buffer.removeAll(keepingCapacity: true)
+                    }
+                }
+            }
+            let count = data.count
+            while offset + 64 <= count {
+                Self.compress(
+                    &h,
+                    block: Array(data[data.startIndex + offset..<(data.startIndex + offset + 64)])
+                )
+                offset += 64
+            }
+            if offset < count {
+                buffer.append(contentsOf: data[(data.startIndex + offset)...])
             }
         }
 

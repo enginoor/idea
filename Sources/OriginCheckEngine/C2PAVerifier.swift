@@ -318,13 +318,18 @@ public struct C2PAVerifier: Sendable {
     }
 
     private func modificationState(_ statuses: [ValidationStatus]?, signatureValid: Bool?) -> Bool? {
+        // A hash comparison only proves modification when the signature itself
+        // verifies. With an invalid or unverifiable signature the manifest
+        // cannot be attributed to its signer, so claiming "modified after
+        // signing" would overstate what is actually provable.
+        guard signatureValid == true else { return nil }
         guard let statuses else { return nil }
         for status in statuses {
             let code = (status.code ?? "").lowercased()
             if code.contains("mismatch") { return true }
             if code.contains("hash") && isInvalid(status) { return true }
         }
-        return signatureValid == true ? false : nil
+        return false
     }
 
     private func isInvalid(_ status: ValidationStatus) -> Bool {

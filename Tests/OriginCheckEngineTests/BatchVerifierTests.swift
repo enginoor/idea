@@ -18,6 +18,7 @@ final class BatchVerifierTests: XCTestCase {
         let modified = fixturesDir.appendingPathComponent("signed-modified.json").path
         let unknown = fixturesDir.appendingPathComponent("unknown-signer.json").path
         let expired = fixturesDir.appendingPathComponent("expired-cert.json").path
+        let expiredHash = fixturesDir.appendingPathComponent("expired-hash-mismatch.json").path
 
         let script = """
         #!/bin/bash
@@ -25,6 +26,7 @@ final class BatchVerifierTests: XCTestCase {
           *intact*) cat "\(intact)" ;;
           *modified*) cat "\(modified)" ;;
           *unknown*) cat "\(unknown)" ;;
+          *expired-hash*) cat "\(expiredHash)" ;;
           *expired*) cat "\(expired)" ;;
           *sleepy*) while :; do :; done ;;
           *) echo "No C2PA manifest found." >&2; exit 1 ;;

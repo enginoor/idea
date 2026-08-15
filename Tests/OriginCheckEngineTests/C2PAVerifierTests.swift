@@ -18,6 +18,7 @@ final class C2PAVerifierTests: XCTestCase {
         let modified = fixturesDir.appendingPathComponent("signed-modified.json").path
         let unknown = fixturesDir.appendingPathComponent("unknown-signer.json").path
         let expired = fixturesDir.appendingPathComponent("expired-cert.json").path
+        let expiredHash = fixturesDir.appendingPathComponent("expired-hash-mismatch.json").path
 
         let script = """
         #!/bin/bash
@@ -25,6 +26,7 @@ final class C2PAVerifierTests: XCTestCase {
           *intact*) cat "\(intact)" ;;
           *modified*) cat "\(modified)" ;;
           *unknown*) cat "\(unknown)" ;;
+          *expired-hash*) cat "\(expiredHash)" ;;
           *expired*) cat "\(expired)" ;;
           *sleepy*) while :; do :; done ;;
           *) echo "No C2PA manifest found." >&2; exit 1 ;;
@@ -100,6 +102,19 @@ final class C2PAVerifierTests: XCTestCase {
         XCTAssertEqual(verdict.signatureValid, false)
         XCTAssertEqual(verdict.confidence.label, .low)
         XCTAssertTrue(verdict.evidence.contains { $0.kind == "signature_validity" })
+    }
+
+    func testHashMismatchWithoutValidSignatureIsNotReportedAsModification() async throws {
+        // A hash mismatch only proves modification when the signature itself
+        // verifies. With an expired certificate the manifest cannot be
+        // attributed to its signer, so presenting "modified after signing"
+        // as a fact would overstate what is provable.
+        let url = try makeDummyFile(named: "photo-expired-hash.jpg")
+        let verdict = try await verifier().verifyFile(at: url)
+        XCTAssertEqual(verdict.kind, .inconclusive)
+        XCTAssertEqual(verdict.signatureValid, false)
+        XCTAssertNil(verdict.modifiedSinceSigning)
+        XCTAssertFalse(verdict.evidence.contains { $0.kind == "asset_hash" })
     }
 
     func testNoManifestIsNotWatermarkedWithCaveat() async throws {

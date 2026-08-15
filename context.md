@@ -6,6 +6,16 @@ Update this file after every prompt so it acts as memory.
 
 ## Session log
 
+### 2026-08-15: Third bug-hunt pass, SHA-256 quadratic fix, honest modification state, working menu shortcuts
+
+- SHA-256 was quadratic. `Digester.update` appended every chunk to a buffer and called `removeFirst(64)` per block, shifting the remaining array each time: 8 MiB took 6.5 s, so hashing a large video (the whole point of streaming file hashes) was effectively impossible. Rewrote `update` to compress full blocks straight from the input with a carry buffer of at most 63 bytes. 8 MiB now hashes in about 0.6 s in debug, 0.06 s optimized. New test `testLargeFileHashingIsLinearNotQuadratic` hashes 8 MiB with a 5 s bound, which the old code blew past and the fixed code clears by 10x.
+- `modificationState` overclaimed. With an expired certificate and a hash mismatch in the same manifest, the old code reported `modifiedSinceSigning = true` as a fact even though an unverifiable manifest cannot be attributed to its signer. It now returns nil unless the signature verifies, so the verdict stays inconclusive with no "modified after signing" evidence. New fixture `expired-hash-mismatch.json` plus a test; the mock c2patool learned the `*expired-hash*` case.
+- Insufficient-input verdicts carried the wrong caveat: `Caveats.textNegative` ("No watermark detected") on a "not enough text" result. Added `Caveats.textTooShort` and used it in both insufficient-input paths; tests assert the exact string.
+- The menu bar shortcuts were dead on arrival. `keyboardShortcut` on MenuBarExtra items only applies while the menu is open, so Cmd+Shift+C and Cmd+Shift+O never fired globally. Moved them to a `CommandMenu("Verify")` on the WindowGroup, removed the misleading hints from the menu bar items, and shared the actions through new `AppState.checkClipboardText()` and `AppState.pickAndVerifyFile()`. The picker now calls `NSApplication.shared.activate(ignoringOtherApps: true)` before `runModal` so the panel cannot open behind the frontmost app.
+- Settings key state went stale and failures were silent. `hasAnthropicKey` was a computed read over the Keychain, which Observation cannot track, so the caption and Remove button never refreshed after save or removal, and `try?` swallowed save errors. Replaced with observable `anthropicKeyStored`, set in init and on every save/removal; save failures now set `statusMessage`.
+- Multi-file drops only kept the last verdict on screen. `handleDrop` now reports "Checked N files. Each result is in History." when more than one file lands.
+- Engine suite: 47 tests pass on Linux Swift 6.0.3 (3 new: hash-mismatch-without-valid-signature, too-short caveats, large-file linear bound). App edits compile on macOS in CI on push.
+
 ### 2026-08-15: Second bug-hunt pass, CI fixed and hardened
 
 - CI was red on the last push of the previous pass: the settings rewrite re-declared `storeRawContent` (the new stored property joined a copy that already existed in the analysis-state block), and the macOS app target failed with `invalid redeclaration of 'storeRawContent'`. Removed the duplicate.

@@ -112,6 +112,7 @@ The mock picks a payload by input file name: names containing `intact`, `modifie
 - `signed-modified.json`: Claude-signed, valid signature, asset changed after signing.
 - `unknown-signer.json`: signed by an unknown entity.
 - `expired-cert.json`: expired signing certificate.
+- `expired-hash-mismatch.json`: expired certificate plus a hash mismatch, which must not be reported as a modification because the signature does not verify.
 
 Every fixture has an expected verdict asserted in the test suite, so a regression anywhere in the parsing or confidence logic is caught.
 

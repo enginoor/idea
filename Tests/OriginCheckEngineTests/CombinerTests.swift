@@ -73,6 +73,20 @@ final class CombinerTests: XCTestCase {
             preset: .balanced
         )
         XCTAssertEqual(verdict.kind, .insufficientInput)
+        // The caveat must match the verdict: this is not a "no watermark"
+        // result, it is a "not enough text" result.
+        XCTAssertEqual(verdict.caveatText, Caveats.textTooShort)
+    }
+
+    func testInsufficientOnlyResultCarriesTooShortCaveat() {
+        let verdict = VerdictCombiner().combineText(
+            results: [result("LocalAnalyzer", .insufficient, confidence: 0.1)],
+            characterCount: 600,
+            providersRun: ["LocalAnalyzer"],
+            preset: .balanced
+        )
+        XCTAssertEqual(verdict.kind, .insufficientInput)
+        XCTAssertEqual(verdict.caveatText, Caveats.textTooShort)
     }
 
     func testAllProvidersUnavailableIsNotAvailable() {

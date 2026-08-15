@@ -49,6 +49,35 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(try SHA256.hashFile(at: url), SHA256.hashData(Data()))
     }
 
+    func testLargeFileHashingIsLinearNotQuadratic() throws {
+        // An 8 MiB file must hash in well under a second with a linear
+        // digester. The previous implementation appended each chunk to a
+        // buffer and shifted it one element at a time, which made the same
+        // input take many seconds and made large videos effectively
+        // unhashable. The bound is generous: the fixed code finishes this
+        // in a few hundred milliseconds here, so slow CI runners cannot
+        // flake it, while the quadratic version blew straight past it.
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OriginCheckHash-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("large.bin")
+        let count = 8 * 1024 * 1024
+        var bytes = [UInt8](repeating: 0, count: count)
+        for i in 0..<count {
+            bytes[i] = UInt8((i * 7 + 3) % 256)
+        }
+        try Data(bytes).write(to: url)
+
+        let start = Date()
+        let hash = try SHA256.hashFile(at: url)
+        XCTAssertEqual(hash, SHA256.hashData(Data(bytes)))
+        XCTAssertLessThan(
+            Date().timeIntervalSince(start),
+            5.0,
+            "Hashing 8 MiB must complete quickly, not quadratically"
+        )
+    }
+
     func testFileRecordHashesContentNotName() async throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("OriginCheckRecord-\(UUID().uuidString)")

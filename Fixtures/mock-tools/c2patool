@@ -17,6 +17,7 @@ case "$NAME" in
   *intact*)  cat "$DIR/signed-intact.json" ;;
   *modified*) cat "$DIR/signed-modified.json" ;;
   *unknown*) cat "$DIR/unknown-signer.json" ;;
+  *expired-hash*) cat "$DIR/expired-hash-mismatch.json" ;;
   *expired*) cat "$DIR/expired-cert.json" ;;
   *) echo "No C2PA manifest found." >&2; exit 1 ;;
 esac
