@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import OriginCheckEngine
 
 struct CheckView: View {
     @Environment(AppState.self) private var appState
@@ -86,7 +87,7 @@ struct CheckView: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 160)
                 .overlay(
-                    Text(isTargeted ? "Drop to verify" : "Drag a png, jpg, svg, webp, pdf, mp4, or mov here")
+                    Text(isTargeted ? "Drop to verify" : "Drop an image, video, audio, or PDF file here")
                         .foregroundStyle(.secondary)
                 )
                 .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
@@ -94,13 +95,18 @@ struct CheckView: View {
                     return true
                 }
 
+            Text("Supported: \(supportedFormatsSummary)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
             HStack(spacing: 12) {
                 Button("Choose a file") {
                     showImporter = true
                 }
                 .fileImporter(
                     isPresented: $showImporter,
-                    allowedContentTypes: [.png, .jpeg, .svg, .pdf, .webP, .mpeg4Movie, .quickTimeMovie, .data]
+                    allowedContentTypes: supportedContentTypes
                 ) { result in
                     if case .success(let url) = result {
                         Task { @MainActor in
@@ -147,6 +153,34 @@ struct CheckView: View {
                 await appState.analyzeText(appState.textInput)
             }
         }
+    }
+
+    /// Content types derived from the engine's format list, so the picker
+    /// never drifts from what verification supports. Any-file (.data) stays
+    /// as a fallback; unsupported types get an honest no-manifest verdict.
+    private var supportedContentTypes: [UTType] {
+        var seen = Set<String>()
+        var types: [UTType] = []
+        for format in MediaFormat.allCases {
+            guard let type = UTType(filenameExtension: format.rawValue) else { continue }
+            if seen.insert(type.identifier).inserted {
+                types.append(type)
+            }
+        }
+        types.append(.data)
+        return types
+    }
+
+    /// Every format the engine can verify, deduplicated by display name
+    /// (jpg and jpeg share a name, as do tif and tiff, heic and heif).
+    private var supportedFormatsSummary: String {
+        var names: [String] = []
+        for format in MediaFormat.allCases {
+            if !names.contains(format.displayName) {
+                names.append(format.displayName)
+            }
+        }
+        return names.joined(separator: ", ")
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) {

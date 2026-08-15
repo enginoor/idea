@@ -60,7 +60,7 @@ or open `App/Package.swift` in Xcode. SwiftPM identifies the engine by the check
 GitHub Actions runs on every push and pull request:
 
 - `ci.yml` runs the engine test suite on Linux (Swift 6.0.3) and macOS, and builds the macOS app on a macOS runner. A red check means something broke; the app target gets its first real compile here, since the development sandbox is Linux.
-- `release.yml` gates on the engine tests, builds the app in release mode, packages it into `OriginCheck.app` (ad-hoc signed), zips it with a versioned name, and publishes a GitHub release with structured notes and a SHA-256 checksum.
+- `release.yml` gates on the engine tests, builds the app in release mode, packages it into `OriginCheck.app` (ad-hoc signed), zips it with a versioned name, and publishes a GitHub release with structured notes, a SHA-256 checksum in the notes, and a machine-readable `checksums.txt` alongside the zip. `ci.yml` can also be run manually from the Actions tab.
 
 Releases are cut by pushing a version tag:
 
@@ -81,7 +81,7 @@ cargo install c2patool
 
 or with Homebrew if a formula is available. The tool path is injectable (`C2PAVerifier(toolPath:)`), and the engine throws a clear error if the tool is missing.
 
-Supported formats follow c2patool: png, jpg, jpeg, svg, webp, avif, heic, heif, tif, tiff, dng, mp4, mov, m4a, mp3, wav, and pdf (read-only). The macOS app surfaces the most common ones in its file picker; the engine accepts the full list, including folder scans.
+Supported formats follow c2patool: png, jpg, jpeg, svg, webp, avif, heic, heif, tif, tiff, dng, mp4, mov, m4a, mp3, wav, and pdf (read-only). The macOS app's file picker and drop zone accept the full list, derived from the engine's format table so the UI can never drift from what verification supports. Folder scans accept everything too.
 
 ## Batch folder verification
 

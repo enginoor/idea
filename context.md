@@ -6,6 +6,13 @@ Update this file after every prompt so it acts as memory.
 
 ## Session log
 
+### 2026-08-15: Full format support in the app, checksummed releases
+
+- Closed the last format gap: the macOS app's file picker and drop zone now accept the full c2patool list (png, jpg, jpeg, svg, webp, avif, heic, heif, tif, tiff, dng, mp4, mov, m4a, mp3, wav, pdf). `CheckView` derives its allowed content types and the supported-formats caption from the engine's `MediaFormat.allCases`, so the UI cannot drift from what verification supports. jpg/jpeg, tif/tiff, and heic/heif are deduplicated by display name.
+- Release framing tightened: `release.yml` now writes a machine-readable checksums.txt next to the zip, verifies it with shasum -c before publishing, and attaches it to the GitHub release alongside the zip. The SHA-256 stays in the release notes.
+- `ci.yml` gained a workflow_dispatch trigger so tests and the app build can be run manually from the Actions tab.
+- README updated (picker accepts the full list; checksums.txt in the release section). Engine suite still 38 tests; ran `swift test` in the sandbox before pushing.
+
 ### 2026-08-15: Pivot to OriginCheck, engine built and tested
 
 - Owner said the web app was not the product and supplied the OriginCheck spec: a native macOS app that detects Claude content provenance through text watermark analysis and C2PA metadata verification. Old web app removed; agent.md and context.md kept and updated.

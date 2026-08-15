@@ -55,9 +55,15 @@ jobs:
           VERSION: ${{ steps.names.outputs.version }}
         run: |
           bash Scripts/package-app.sh "${VERSION}" "${PWD}"
-          CHECKSUM="$(shasum -a 256 "OriginCheck-${VERSION}-macOS.zip" | awk '{print $1}')"
+          ZIP="OriginCheck-${VERSION}-macOS.zip"
+          CHECKSUM="$(shasum -a 256 "${ZIP}" | awk '{print $1}')"
           echo "checksum=${CHECKSUM}" >> "${GITHUB_OUTPUT}"
+          printf '%s  %s\n' "${CHECKSUM}" "${ZIP}" > checksums.txt
           echo "SHA-256: ${CHECKSUM}"
+          cat checksums.txt
+
+      - name: Verify the checksum file
+        run: shasum -a 256 -c checksums.txt
 
       - name: Write structured release notes
         env:
@@ -76,7 +82,7 @@ jobs:
           else
             TAG="${GITHUB_REF_NAME}"
           fi
-          gh release create "${TAG}" "${ARTIFACT}" \
+          gh release create "${TAG}" "${ARTIFACT}" checksums.txt \
             --repo "${GITHUB_REPOSITORY}" \
             --title "OriginCheck ${VERSION}" \
             --notes-file "${RUNNER_TEMP}/release-notes.md"
