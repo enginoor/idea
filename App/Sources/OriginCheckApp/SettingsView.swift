@@ -4,6 +4,7 @@ import OriginCheckEngine
 struct SettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var keyText = ""
+    @State private var toolPathText = ""
 
     var body: some View {
         @Bindable var appState = appState
@@ -27,6 +28,21 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+
+            Section("Verification tool") {
+                TextField("c2patool path", text: $toolPathText)
+                    .onSubmit { appState.setC2PAToolPath(toolPathText) }
+                HStack {
+                    Button("Save path") { appState.setC2PAToolPath(toolPathText) }
+                        .disabled(toolPathText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    Text("Current: \(appState.c2paToolPath)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text("Path to the c2patool binary, the reference C2PA tool. Leave as c2patool when it is on your PATH.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section("Confidence") {
@@ -56,10 +72,11 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding(24)
         .onAppear {
-            // Never prefill the field, not even with a mask: the field value
-            // is what gets saved, so a placeholder could overwrite the real
-            // key. The caption already reports whether a key is stored.
+            // Never prefill the key field, not even with a mask: the field
+            // value is what gets saved, so a placeholder could overwrite the
+            // real key. The caption already reports whether a key is stored.
             keyText = ""
+            toolPathText = appState.c2paToolPath
         }
     }
 }

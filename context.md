@@ -6,6 +6,17 @@ Update this file after every prompt so it acts as memory.
 
 ## Session log
 
+### 2026-08-15: Fourth bug-hunt pass, real tool-path setting, no main-actor freeze, parallel folder scans
+
+- The batch banner promised "set the tool path in Settings" but Settings had no such field. Added a real c2patool path setting: stored `c2paToolPath` on AppState (defaults key `c2paToolPath`, default `c2patool`), a Settings section with a Save button, persistence in the app scene's onChange, and `AppState.setC2PAToolPath` rebuilds the engine so `verifyFile` and `verifyFolder` use the new path immediately.
+- File hashing for history records ran synchronously on the main actor: verifying a large video froze the UI while the stream was read. The record is now built inside `Task.detached` and only the small JSON write runs on the main actor.
+- A history-save failure after a successful verdict was reported as "Analysis failed" and overwrote the verdict's status. The message now says the verdict is shown but could not be saved to history; engine errors keep their own message. `analyzeText`, `verifyFile`, and `verifyFolder` now return Bool so callers can tell whether a check actually ran.
+- The batch report card had no scroll container and an uncapped per-file list: a large folder overflowed the window and clipped. It now scrolls and caps per-file rows at 100 with a +N more line, matching the failures cap.
+- Folder scans were strictly sequential, one tool run at a time (30 s each on a hung file). `FolderVerifier` now verifies in parallel chunks of 8 via a task group, keeping the report deterministic (outcomes are collected per chunk and both lists are sorted afterwards).
+- Verifying a nonexistent or non-directory path returned a silently empty report card. `FolderVerifier` now throws `FolderVerifierError.directoryNotFound` / `.directoryUnreadable` (new public enum); the app surfaces it as "Folder scan failed: ...".
+- The drop zone ran c2patool on dropped folders and showed a bogus no-manifest verdict. Folders now route to the folder scan (detected via resource values, not just the URL string), and drops that were skipped because a check was running, or that contained no file URLs, say so instead of staying silent. A failed check's own error message is never clobbered by the drop notice.
+- Engine suite: 49 tests pass on Linux Swift 6.0.3 (2 new: missing directory throws, file path instead of directory throws). App edits compile on macOS in CI on push.
+
 ### 2026-08-15: Third bug-hunt pass, SHA-256 quadratic fix, honest modification state, working menu shortcuts
 
 - SHA-256 was quadratic. `Digester.update` appended every chunk to a buffer and called `removeFirst(64)` per block, shifting the remaining array each time: 8 MiB took 6.5 s, so hashing a large video (the whole point of streaming file hashes) was effectively impossible. Rewrote `update` to compress full blocks straight from the input with a carry buffer of at most 63 bytes. 8 MiB now hashes in about 0.6 s in debug, 0.06 s optimized. New test `testLargeFileHashingIsLinearNotQuadratic` hashes 8 MiB with a 5 s bound, which the old code blew past and the fixed code clears by 10x.

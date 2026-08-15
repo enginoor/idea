@@ -6,7 +6,9 @@ import OriginCheckEngine
 @MainActor
 @Observable
 final class AppState {
-    let engine: OriginCheckEngine
+    /// Private set so views cannot swap the engine behind its own state.
+    /// Rebuilt when the c2patool path changes.
+    private(set) var engine: OriginCheckEngine
     let history: any HistoryStoring
     let keyStore: any KeyStoring
 
@@ -27,6 +29,10 @@ final class AppState {
     var localAnalyzerEnabled = true
     var anthropicProviderEnabled = false
     var storeRawContent = false
+    /// Path to the c2patool binary. Defaults to the name alone, which works
+    /// when the tool is on PATH. Editable in Settings; the batch banner
+    /// points there when the tool cannot be launched.
+    var c2paToolPath = "c2patool"
     /// Whether a key is stored in the Keychain. This is observable state,
     /// not a computed read: Observation cannot track the Keychain, so the
     /// Settings caption and button would otherwise never refresh after a
@@ -35,8 +41,9 @@ final class AppState {
 
     init() {
         self.keyStore = KeychainKeyStore()
-        self.engine = OriginCheckEngine(keyStore: keyStore)
         self.history = JSONHistoryStore(fileURL: Self.historyURL())
+        self.c2paToolPath = defaults.string(forKey: "c2paToolPath") ?? "c2patool"
+        self.engine = OriginCheckEngine(c2paToolPath: self.c2paToolPath, keyStore: self.keyStore)
         self.thresholdPreset = ThresholdPreset(
             rawValue: defaults.string(forKey: "thresholdPreset") ?? ""
         ) ?? .balanced
@@ -66,12 +73,15 @@ final class AppState {
 
     // MARK: Actions
 
-    func analyzeText(_ text: String) async {
-        guard !isAnalyzing else { return }
+    /// True when the check ran. The drop zone uses the answer to avoid
+    /// claiming a check happened while another one was still running.
+    @discardableResult
+    func analyzeText(_ text: String) async -> Bool {
+        guard !isAnalyzing else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             statusMessage = "Paste some text first."
-            return
+            return false
         }
         isAnalyzing = true
         defer { isAnalyzing = false }
@@ -86,14 +96,23 @@ final class AppState {
                 rawText: trimmed,
                 storeRawText: storeRawContent
             )
-            try await history.add(record)
+            // A failed history write must not masquerade as a failed check:
+            // the verdict is on screen and correct, only the record is missing.
+            do {
+                try await history.add(record)
+            } catch {
+                statusMessage = "The verdict is shown, but it could not be saved to history: \(error.localizedDescription)"
+            }
+            return true
         } catch {
             statusMessage = "Analysis failed: \(error.localizedDescription)"
+            return false
         }
     }
 
-    func verifyFile(_ url: URL) async {
-        guard !isAnalyzing else { return }
+    @discardableResult
+    func verifyFile(_ url: URL) async -> Bool {
+        guard !isAnalyzing else { return false }
         isAnalyzing = true
         defer { isAnalyzing = false }
         do {
@@ -102,21 +121,33 @@ final class AppState {
             lastTextVerdict = nil
             lastBatchReport = nil
             statusMessage = nil
-            let record = HistoryRecorder.record(
-                forFileVerdict: verdict,
-                fileURL: url,
-                storeRawContent: storeRawContent
-            )
-            try await history.add(record)
+            // Hashing a large video on the main actor would freeze the UI
+            // for the duration of the read, so the record is built on a
+            // background task; only the (cheap) JSON write runs here.
+            let record = await Task.detached {
+                HistoryRecorder.record(
+                    forFileVerdict: verdict,
+                    fileURL: url,
+                    storeRawContent: storeRawContent
+                )
+            }.value
+            do {
+                try await history.add(record)
+            } catch {
+                statusMessage = "The verdict is shown, but it could not be saved to history: \(error.localizedDescription)"
+            }
+            return true
         } catch {
             statusMessage = "Verification failed: \(error.localizedDescription)"
+            return false
         }
     }
 
     /// Verifies every supported media file in a folder. A batch has no single
     /// verdict, so it is not written to history; the report card is the record.
-    func verifyFolder(_ url: URL) async {
-        guard !isAnalyzing else { return }
+    @discardableResult
+    func verifyFolder(_ url: URL) async -> Bool {
+        guard !isAnalyzing else { return false }
         isAnalyzing = true
         defer { isAnalyzing = false }
         do {
@@ -126,8 +157,10 @@ final class AppState {
             lastTextVerdict = nil
             lastFileVerdict = nil
             statusMessage = nil
+            return true
         } catch {
             statusMessage = "Folder scan failed: \(error.localizedDescription)"
+            return false
         }
     }
 
@@ -144,6 +177,17 @@ final class AppState {
     func clearAnthropicKey() {
         keyStore.remove(forKey: "anthropicApiKey")
         anthropicKeyStored = false
+    }
+
+    /// Points the engine at a different c2patool binary. The engine is a
+    /// small value type, so it is rebuilt with the new path rather than
+    /// mutating its internals.
+    func setC2PAToolPath(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard trimmed != c2paToolPath else { return }
+        c2paToolPath = trimmed
+        engine = OriginCheckEngine(c2paToolPath: trimmed, keyStore: keyStore)
     }
 
     // MARK: Menu actions

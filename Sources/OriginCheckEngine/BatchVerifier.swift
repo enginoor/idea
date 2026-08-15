@@ -84,6 +84,11 @@ public struct BatchReport: Codable, Sendable, Equatable {
 public struct FolderVerifier: Sendable {
     public let c2paVerifier: C2PAVerifier
 
+    /// How many files are verified at the same time. The tool run is
+    /// off-process, so a handful of parallel runs keeps a large folder fast
+    /// without hammering the machine.
+    private static let maxConcurrentChecks = 8
+
     public init(c2paToolPath: String = "c2patool", toolTimeout: TimeInterval = 30) {
         self.c2paVerifier = C2PAVerifier(toolPath: c2paToolPath, timeout: toolTimeout)
     }
@@ -92,36 +97,45 @@ public struct FolderVerifier: Sendable {
         at url: URL,
         includeSubdirectories: Bool = true
     ) async throws -> BatchReport {
+        // A missing path used to produce a silently empty report card, which
+        // read as a successful scan of nothing. Say what is wrong instead.
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory),
+              isDirectory.boolValue
+        else {
+            throw FolderVerifierError.directoryNotFound(url.path)
+        }
+
         let walk = try walk(url, includeSubdirectories: includeSubdirectories)
 
         var verdicts: [FileVerdict] = []
         var failures: [BatchFailure] = []
         var toolMissing = false
 
-        for file in walk.supported {
-            do {
-                verdicts.append(try await c2paVerifier.verifyFile(at: file))
-            } catch let error as C2PAVerifier.VerificationError {
-                switch error {
-                case .toolUnavailable(let message):
-                    toolMissing = true
-                    failures.append(BatchFailure(fileName: file.lastPathComponent, reason: message))
-                case .toolTimeout(let message):
-                    // A timeout is a per-file failure, not a missing tool:
-                    // the scan continues with the remaining files.
-                    failures.append(BatchFailure(fileName: file.lastPathComponent, reason: message))
-                case .fileUnreadable(let path):
-                    failures.append(BatchFailure(
-                        fileName: file.lastPathComponent,
-                        reason: "File could not be read: \(path)"
-                    ))
+        // Verify in bounded parallel chunks. Each file carries its own tool
+        // timeout, so a hung file fails by itself; the scan continues with
+        // the remaining files. Outcome order is per chunk, and both lists are
+        // sorted afterwards, so the report stays deterministic.
+        let files = walk.supported
+        var index = 0
+        while index < files.count {
+            let end = min(index + Self.maxConcurrentChecks, files.count)
+            let chunk = files[index..<end]
+            await withTaskGroup(of: CheckOutcome.self) { group in
+                for file in chunk {
+                    group.addTask { await self.check(file) }
                 }
-            } catch {
-                failures.append(BatchFailure(
-                    fileName: file.lastPathComponent,
-                    reason: error.localizedDescription
-                ))
+                for await outcome in group {
+                    switch outcome {
+                    case .verdict(let verdict):
+                        verdicts.append(verdict)
+                    case .failure(let fileName, let reason, let missingTool):
+                        if missingTool { toolMissing = true }
+                        failures.append(BatchFailure(fileName: fileName, reason: reason))
+                    }
+                }
             }
+            index = end
         }
 
         verdicts.sort { $0.fileName.localizedStandardCompare($1.fileName) == .orderedAscending }
@@ -147,6 +161,49 @@ public struct FolderVerifier: Sendable {
         )
     }
 
+    // MARK: - Per-file checking
+
+    /// One file's outcome, shaped so it can cross a task group boundary:
+    /// plain Sendable values, no thrown errors.
+    private enum CheckOutcome: Sendable {
+        case verdict(FileVerdict)
+        case failure(fileName: String, reason: String, missingTool: Bool)
+    }
+
+    private func check(_ file: URL) async -> CheckOutcome {
+        do {
+            return .verdict(try await c2paVerifier.verifyFile(at: file))
+        } catch let error as C2PAVerifier.VerificationError {
+            switch error {
+            case .toolUnavailable(let message):
+                return .failure(
+                    fileName: file.lastPathComponent,
+                    reason: message,
+                    missingTool: true
+                )
+            case .toolTimeout(let message):
+                // A timeout is a per-file failure, not a missing tool.
+                return .failure(
+                    fileName: file.lastPathComponent,
+                    reason: message,
+                    missingTool: false
+                )
+            case .fileUnreadable(let path):
+                return .failure(
+                    fileName: file.lastPathComponent,
+                    reason: "File could not be read: \(path)",
+                    missingTool: false
+                )
+            }
+        } catch {
+            return .failure(
+                fileName: file.lastPathComponent,
+                reason: error.localizedDescription,
+                missingTool: false
+            )
+        }
+    }
+
     // MARK: - Walking
 
     private struct WalkResult {
@@ -164,13 +221,17 @@ public struct FolderVerifier: Sendable {
         var unsupportedCount = 0
         let keys: [URLResourceKey] = [.isRegularFileKey]
 
-        let enumerator = FileManager.default.enumerator(
+        // A nil enumerator means the directory cannot be listed (permissions,
+        // a broken symlink). Report it instead of returning a fake empty scan.
+        guard let enumerator = FileManager.default.enumerator(
             at: url,
             includingPropertiesForKeys: keys,
             options: options
-        )
+        ) else {
+            throw FolderVerifierError.directoryUnreadable(url.path)
+        }
 
-        while let file = enumerator?.nextObject() as? URL {
+        while let file = enumerator.nextObject() as? URL {
             let values = try? file.resourceValues(forKeys: Set(keys))
             guard values?.isRegularFile == true else { continue }
             if MediaFormat.isSupported(pathExtension: file.pathExtension) {
@@ -183,4 +244,11 @@ public struct FolderVerifier: Sendable {
         supported.sort { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
         return WalkResult(supported: supported, unsupportedCount: unsupportedCount)
     }
+}
+
+/// A folder could not be scanned at all. The report card is only produced
+/// when the scan actually ran.
+public enum FolderVerifierError: Error, Sendable {
+    case directoryNotFound(String)
+    case directoryUnreadable(String)
 }

@@ -14,6 +14,7 @@ struct OriginCheckApp: App {
                 .onChange(of: appState.localAnalyzerEnabled) { persistSettings() }
                 .onChange(of: appState.anthropicProviderEnabled) { persistSettings() }
                 .onChange(of: appState.storeRawContent) { persistSettings() }
+                .onChange(of: appState.c2paToolPath) { persistSettings() }
         }
         .commands {
             // The global shortcuts live here, not on the menu bar items:
@@ -53,6 +54,7 @@ struct OriginCheckApp: App {
         defaults.set(appState.localAnalyzerEnabled, forKey: "localAnalyzerEnabled")
         defaults.set(appState.anthropicProviderEnabled, forKey: "anthropicProviderEnabled")
         defaults.set(appState.storeRawContent, forKey: "storeRawContent")
+        defaults.set(appState.c2paToolPath, forKey: "c2paToolPath")
     }
 }
 

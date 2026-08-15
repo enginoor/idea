@@ -79,7 +79,7 @@ File verification shells out to `c2patool`, the reference command line tool from
 cargo install c2patool
 ```
 
-or with Homebrew if a formula is available. The tool path is injectable (`C2PAVerifier(toolPath:)`), and the engine throws a clear error if the tool is missing.
+or with Homebrew if a formula is available. The tool path is injectable (`C2PAVerifier(toolPath:)`), and the engine throws a clear error if the tool is missing. The macOS app exposes the path in Settings, so a Homebrew install location or a custom build can be pointed at without rebuilding.
 
 Supported formats follow c2patool: png, jpg, jpeg, svg, webp, avif, heic, heif, tif, tiff, dng, mp4, mov, m4a, mp3, wav, and pdf (read-only). The macOS app's file picker and drop zone accept the full list, derived from the engine's format table so the UI can never drift from what verification supports. Folder scans accept everything too.
 

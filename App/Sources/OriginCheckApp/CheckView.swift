@@ -191,16 +191,34 @@ struct CheckView: View {
         // at once would trip the overlapping-analysis guard.
         Task { @MainActor in
             var checked = 0
+            var verifiedFolder = false
             for provider in providers {
-                if let url = await loadFileURL(from: provider) {
-                    await appState.verifyFile(url)
+                guard let url = await loadFileURL(from: provider) else { continue }
+                // A dropped folder may or may not carry a trailing slash, so
+                // ask the file system instead of trusting the URL string.
+                let isDirectory = url.hasDirectoryPath
+                    || (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
+                if isDirectory {
+                    // A dropped folder is a folder scan, not a single file:
+                    // verifying a directory path with c2patool would only
+                    // produce a bogus no-manifest verdict.
+                    verifiedFolder = await appState.verifyFolder(url)
+                } else if await appState.verifyFile(url) {
                     checked += 1
                 }
             }
-            // The panel only keeps the last verdict, so a multi-file drop
-            // would otherwise look like a single check. Say what happened.
-            if checked > 1 {
+            if appState.isAnalyzing {
+                appState.statusMessage = "A check is already running. Drop again when it finishes."
+            } else if verifiedFolder {
+                appState.statusMessage = "Folder scan complete. The report card shows every file."
+            } else if checked > 1 {
+                // The panel only keeps the last verdict, so a multi-file drop
+                // would otherwise look like a single check. Say what happened.
                 appState.statusMessage = "Checked \(checked) files. Each result is in History."
+            } else if checked == 0 && appState.statusMessage == nil {
+                // A failed check already set its own message; do not replace
+                // it with a generic drop notice.
+                appState.statusMessage = "The drop did not contain any file URLs."
             }
         }
     }

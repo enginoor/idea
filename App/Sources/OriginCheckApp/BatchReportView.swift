@@ -8,29 +8,34 @@ struct BatchReportView: View {
     let report: BatchReport
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            header
-            if report.toolMissing {
-                toolMissingBanner
+        // A scan of a large folder is far taller than the window. The card
+        // scrolls so the per-file list is reachable instead of being clipped.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                header
+                if report.toolMissing {
+                    toolMissingBanner
+                }
+                summaryGrid
+                // When the tool is missing, every supported file fails with the
+                // same cause; the banner above already says it, so listing all of
+                // them would only repeat it. Per-file failures are shown only
+                // when the scan actually ran.
+                if !report.toolMissing && !report.failures.isEmpty {
+                    failuresSection
+                }
+                if !report.verdicts.isEmpty {
+                    fileList
+                }
+                caveat
             }
-            summaryGrid
-            // When the tool is missing, every supported file fails with the
-            // same cause; the banner above already says it, so listing all of
-            // them would only repeat it. Per-file failures are shown only
-            // when the scan actually ran.
-            if !report.toolMissing && !report.failures.isEmpty {
-                failuresSection
-            }
-            if !report.verdicts.isEmpty {
-                fileList
-            }
-            caveat
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(nsColor: .textBackgroundColor))
+            )
         }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color(nsColor: .textBackgroundColor))
-        )
     }
 
     private var header: some View {
@@ -116,11 +121,20 @@ struct BatchReportView: View {
     }
 
     private var fileList: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        // Capped like the failures list: a folder with thousands of files
+        // must not build thousands of rows. The count cards already carry
+        // the totals.
+        let shown = report.verdicts.prefix(100)
+        return VStack(alignment: .leading, spacing: 8) {
             Text("Per file")
                 .font(.subheadline.weight(.semibold))
-            ForEach(Array(report.verdicts.enumerated()), id: \.offset) { _, verdict in
+            ForEach(Array(shown.enumerated()), id: \.offset) { _, verdict in
                 row(for: verdict)
+            }
+            if report.verdicts.count > 100 {
+                Text("+ \(report.verdicts.count - 100) more files")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }

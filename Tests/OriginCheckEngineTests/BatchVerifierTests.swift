@@ -159,4 +159,44 @@ final class BatchVerifierTests: XCTestCase {
         XCTAssertEqual(report.verdicts.count, 0)
         XCTAssertTrue(report.failures.allSatisfy { $0.reason.contains("Could not launch") })
     }
+
+    func testMissingDirectoryThrowsInsteadOfEmptyReport() async {
+        // A nonexistent path used to scan as an empty report card, which
+        // read as a successful scan of nothing. It must fail loudly.
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OriginCheckMissing-\(UUID().uuidString)")
+        do {
+            _ = try await verifier().verifyDirectory(at: missing)
+            XCTFail("Expected directoryNotFound for a missing path")
+        } catch let error as FolderVerifierError {
+            if case .directoryNotFound = error {
+                // expected
+            } else {
+                XCTFail("Unexpected error: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
+    func testFilePathInsteadOfDirectoryThrows() async throws {
+        // Pointing the scan at a regular file must not be treated as an
+        // empty directory either.
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OriginCheckNotADir-\(UUID().uuidString).png")
+        try Data("dummy bytes".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        do {
+            _ = try await verifier().verifyDirectory(at: file)
+            XCTFail("Expected directoryNotFound for a file path")
+        } catch let error as FolderVerifierError {
+            if case .directoryNotFound = error {
+                // expected
+            } else {
+                XCTFail("Unexpected error: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
 }
