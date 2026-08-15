@@ -1,6 +1,22 @@
 import SwiftUI
 import OriginCheckEngine
 
+extension VerdictKind {
+    /// A short, human readable title for history rows and record details.
+    /// The engine stays UI free, so the wording lives in this display layer.
+    /// The titles mirror the Check tab so one verdict reads the same
+    /// everywhere in the app.
+    var historyTitle: String {
+        switch self {
+        case .watermarked: "Watermark detected"
+        case .notWatermarked: "No watermark detected"
+        case .insufficientInput: "Not enough text"
+        case .notAvailable: "Detection not available"
+        case .inconclusive: "Inconclusive"
+        }
+    }
+}
+
 /// A verdict shaped for display. The engine stays UI free; this layer decides
 /// how a verdict is presented and which color it wears.
 struct VerdictDisplay {

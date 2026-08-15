@@ -36,6 +36,7 @@ struct CheckView: View {
                     Button("Check text") {
                         run()
                     }
+                    .keyboardShortcut(.return, modifiers: [.command])
                     .disabled(appState.isAnalyzing)
                 }
 
@@ -104,6 +105,7 @@ struct CheckView: View {
                 Button("Choose a file") {
                     showImporter = true
                 }
+                .keyboardShortcut("o", modifiers: [.command])
                 .fileImporter(
                     isPresented: $showImporter,
                     allowedContentTypes: supportedContentTypes

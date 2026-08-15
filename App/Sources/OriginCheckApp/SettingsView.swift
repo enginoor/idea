@@ -16,7 +16,9 @@ struct SettingsView: View {
                         .onSubmit { appState.saveAnthropicKey(keyText) }
                     HStack {
                         Button("Save key") { appState.saveAnthropicKey(keyText) }
+                            .disabled(keyText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         Button("Remove key") { appState.clearAnthropicKey(); keyText = "" }
+                            .disabled(!appState.hasAnthropicKey)
                         Text(appState.hasAnthropicKey ? "A key is stored in the Keychain." : "No key stored.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -54,7 +56,10 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding(24)
         .onAppear {
-            keyText = appState.hasAnthropicKey ? "••••••••" : ""
+            // Never prefill the field, not even with a mask: the field value
+            // is what gets saved, so a placeholder could overwrite the real
+            // key. The caption already reports whether a key is stored.
+            keyText = ""
         }
     }
 }

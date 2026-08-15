@@ -23,7 +23,12 @@ public struct C2PAVerifier: Sendable {
             throw VerificationError.fileUnreadable(url.path)
         }
 
-        let output = try runTool(arguments: [url.path])
+        // The tool run blocks while it waits for the process to exit, so it
+        // runs on a detached thread: the caller (often the main actor) never
+        // freezes while a large file is being verified.
+        let output = try await Task.detached(priority: .userInitiated) {
+            try await self.runTool(arguments: [url.path])
+        }.value
         let fileName = url.lastPathComponent
         let format = url.pathExtension.lowercased()
 
@@ -51,7 +56,7 @@ public struct C2PAVerifier: Sendable {
 
     // MARK: - Tool execution
 
-    private func runTool(arguments: [String]) throws -> ToolOutput {
+    private func runTool(arguments: [String]) async throws -> ToolOutput {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: toolPath)
         process.arguments = arguments
@@ -70,10 +75,22 @@ public struct C2PAVerifier: Sendable {
             )
         }
 
-        process.waitUntilExit()
-        let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
-        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+        // Drain both pipes on background threads while the tool runs. Reading
+        // only after waitUntilExit can deadlock when a manifest is large
+        // enough to fill the pipe buffer and the tool blocks writing to it.
+        let outBox = FileHandleBox(outPipe.fileHandleForReading)
+        let errBox = FileHandleBox(errPipe.fileHandleForReading)
+        let outRead = Task.detached { () -> Data in
+            (try? outBox.handle.readToEnd()) ?? Data()
+        }
+        let errRead = Task.detached { () -> Data in
+            (try? errBox.handle.readToEnd()) ?? Data()
+        }
 
+        process.waitUntilExit()
+
+        let outData = await outRead.value
+        let errData = await errRead.value
         return ToolOutput(
             stdout: String(data: outData, encoding: .utf8) ?? "",
             stderr: String(data: errData, encoding: .utf8) ?? "",
@@ -85,6 +102,16 @@ public struct C2PAVerifier: Sendable {
         var stdout: String
         var stderr: String
         var exitCode: Int32
+    }
+
+    /// Lets a non-Sendable FileHandle cross into a detached drain task. Each
+    /// handle is used by exactly one reader task, so this opts out of the
+    /// sendability check rather than sharing state unsafely.
+    private final class FileHandleBox: @unchecked Sendable {
+        let handle: FileHandle
+        init(_ handle: FileHandle) {
+            self.handle = handle
+        }
     }
 
     // MARK: - Manifest mapping

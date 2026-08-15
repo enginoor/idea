@@ -19,10 +19,26 @@ final class AppState {
 
     private let defaults = UserDefaults.standard
 
+    /// Settings are stored observable properties, not computed ones: the
+    /// Observation framework only tracks stored state, so a computed property
+    /// backed by UserDefaults would leave the Settings UI blind to changes.
+    /// Persistence happens in one place, in the app scene, via onChange.
+    var thresholdPreset: ThresholdPreset = .balanced
+    var localAnalyzerEnabled = true
+    var anthropicProviderEnabled = false
+    var storeRawContent = false
+
     init() {
         self.keyStore = KeychainKeyStore()
         self.engine = OriginCheckEngine(keyStore: keyStore)
         self.history = JSONHistoryStore(fileURL: Self.historyURL())
+        self.thresholdPreset = ThresholdPreset(
+            rawValue: defaults.string(forKey: "thresholdPreset") ?? ""
+        ) ?? .balanced
+        self.localAnalyzerEnabled = defaults.object(forKey: "localAnalyzerEnabled") == nil
+            ? true
+            : defaults.bool(forKey: "localAnalyzerEnabled")
+        self.anthropicProviderEnabled = defaults.bool(forKey: "anthropicProviderEnabled")
         self.storeRawContent = defaults.bool(forKey: "storeRawContent")
     }
 
@@ -42,29 +58,10 @@ final class AppState {
         )
     }
 
-    // MARK: Settings backed by UserDefaults
-
-    var thresholdPreset: ThresholdPreset {
-        get { ThresholdPreset(rawValue: defaults.string(forKey: "thresholdPreset") ?? "") ?? .balanced }
-        set { defaults.set(newValue.rawValue, forKey: "thresholdPreset") }
-    }
-
-    var localAnalyzerEnabled: Bool {
-        get {
-            if defaults.object(forKey: "localAnalyzerEnabled") == nil { return true }
-            return defaults.bool(forKey: "localAnalyzerEnabled")
-        }
-        set { defaults.set(newValue, forKey: "localAnalyzerEnabled") }
-    }
-
-    var anthropicProviderEnabled: Bool {
-        get { defaults.bool(forKey: "anthropicProviderEnabled") }
-        set { defaults.set(newValue, forKey: "anthropicProviderEnabled") }
-    }
-
     // MARK: Actions
 
     func analyzeText(_ text: String) async {
+        guard !isAnalyzing else { return }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             statusMessage = "Paste some text first."
@@ -76,6 +73,7 @@ final class AppState {
             let verdict = try await engine.analyzeText(trimmed, options: options)
             lastTextVerdict = verdict
             lastFileVerdict = nil
+            lastBatchReport = nil
             statusMessage = nil
             let record = HistoryRecorder.record(
                 forTextVerdict: verdict,
@@ -89,6 +87,7 @@ final class AppState {
     }
 
     func verifyFile(_ url: URL) async {
+        guard !isAnalyzing else { return }
         isAnalyzing = true
         defer { isAnalyzing = false }
         do {
@@ -111,6 +110,7 @@ final class AppState {
     /// Verifies every supported media file in a folder. A batch has no single
     /// verdict, so it is not written to history; the report card is the record.
     func verifyFolder(_ url: URL) async {
+        guard !isAnalyzing else { return }
         isAnalyzing = true
         defer { isAnalyzing = false }
         do {

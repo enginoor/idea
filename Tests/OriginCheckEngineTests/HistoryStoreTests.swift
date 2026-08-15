@@ -24,6 +24,60 @@ final class HistoryStoreTests: XCTestCase {
         )
     }
 
+    func testHashFileMatchesHashData() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OriginCheckHash-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("payload.bin")
+        // 2 MiB of patterned bytes exercises multi-block streaming.
+        let count = 2 * 1024 * 1024
+        var bytes = [UInt8](repeating: 0, count: count)
+        for i in 0..<count {
+            bytes[i] = UInt8((i * 7 + 3) % 256)
+        }
+        let data = Data(bytes)
+        try data.write(to: url)
+        XCTAssertEqual(try SHA256.hashFile(at: url), SHA256.hashData(data))
+    }
+
+    func testHashFileEmptyFile() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OriginCheckHash-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("empty.bin")
+        try Data().write(to: url)
+        XCTAssertEqual(try SHA256.hashFile(at: url), SHA256.hashData(Data()))
+    }
+
+    func testFileRecordHashesContentNotName() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OriginCheckRecord-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent("photo-intact.jpg")
+        let content = Data("photo bytes".utf8)
+        try content.write(to: url)
+
+        let verdict = FileVerdict(
+            kind: .watermarked,
+            confidence: ConfidenceRules.confidence(0.9),
+            fileName: "photo-intact.jpg",
+            format: "jpg",
+            manifestPresent: true,
+            signatureValid: true,
+            modifiedSinceSigning: false,
+            signer: "Claude",
+            softwareAgent: "Claude",
+            claims: [],
+            evidence: [EvidenceItem(source: "Test", kind: "fixture", summary: "A record.")],
+            caveatText: Caveats.fileValid(signer: "Claude", tool: "Claude")
+        )
+
+        let record = HistoryRecorder.record(forFileVerdict: verdict, fileURL: url, storeRawContent: false)
+        XCTAssertEqual(record.inputHash, SHA256.hashData(content))
+        XCTAssertNotEqual(record.inputHash, SHA256.hashString(verdict.fileName))
+        XCTAssertNil(record.fileThumbnailPath)
+    }
+
     func testRoundTripAndDelete() async throws {
         let store = try makeStore()
         let first = HistoryRecord(

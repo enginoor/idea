@@ -83,8 +83,10 @@ public enum HistoryRecorder {
         storeRawContent: Bool
     ) -> HistoryRecord {
         let hash: String
-        if let fileURL, let data = try? Data(contentsOf: fileURL) {
-            hash = SHA256.hashData(data)
+        if let fileURL {
+            // Stream the file so a large video is never loaded into memory
+            // just to hash it. Falls back to a name hash when unreadable.
+            hash = (try? SHA256.hashFile(at: fileURL)) ?? SHA256.hashString(verdict.fileName)
         } else {
             hash = SHA256.hashString(verdict.fileName)
         }

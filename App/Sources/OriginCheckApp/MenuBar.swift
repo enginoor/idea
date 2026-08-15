@@ -7,7 +7,9 @@ struct MenuBarContent: View {
 
     var body: some View {
         Button("Check Clipboard") { checkClipboard() }
+            .keyboardShortcut("c", modifiers: [.command, .shift])
         Button("Verify a File...") { pickFile() }
+            .keyboardShortcut("o", modifiers: [.command, .shift])
         Divider()
         Button("Open OriginCheck") { openWindow(id: "main") }
         Divider()
@@ -21,6 +23,9 @@ struct MenuBarContent: View {
         else { return }
         Task { @MainActor in
             await appState.analyzeText(text)
+            // The verdict lands in the Check tab; bring the window forward so
+            // a menu bar check is never silent.
+            openWindow(id: "main")
         }
     }
 
@@ -32,6 +37,7 @@ struct MenuBarContent: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { @MainActor in
             await appState.verifyFile(url)
+            openWindow(id: "main")
         }
     }
 }

@@ -8,6 +8,7 @@ struct HistoryView: View {
     @State private var records: [HistoryRecord] = []
     @State private var searchText = ""
     @State private var selected: HistoryRecord?
+    @State private var showDeleteConfirmation = false
 
     var body: some View {
         @Bindable var appState = appState
@@ -20,8 +21,9 @@ struct HistoryView: View {
                 Toggle("Store raw content", isOn: $appState.storeRawContent)
                     .toggleStyle(.checkbox)
                 Button("Export JSON") { export() }
+                    .keyboardShortcut("s", modifiers: [.command, .shift])
                     .disabled(filtered.isEmpty)
-                Button("Delete all") { deleteAll() }
+                Button("Delete all") { showDeleteConfirmation = true }
                     .disabled(filtered.isEmpty)
             }
 
@@ -30,7 +32,9 @@ struct HistoryView: View {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 32))
                         .foregroundStyle(.tertiary)
-                    Text("No checks yet. Every verdict you make is kept here with its evidence.")
+                    Text(records.isEmpty
+                        ? "No checks yet. Every verdict you make is kept here with its evidence."
+                        : "No history entries match the search.")
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -38,7 +42,7 @@ struct HistoryView: View {
                 List(filtered) { record in
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(record.verdictKind.rawValue)
+                            Text(record.verdictKind.historyTitle)
                                 .font(.headline)
                             Text("\(record.inputType) · \(record.date.formatted(date: .abbreviated, time: .shortened))")
                                 .font(.caption)
@@ -57,8 +61,25 @@ struct HistoryView: View {
         }
         .padding(24)
         .task { await reload() }
+        // History is shared with the Check tab and the menu bar; reload
+        // whenever a check completes so the list never shows stale records.
+        .onChange(of: appState.lastTextVerdict) {
+            Task { @MainActor in await reload() }
+        }
+        .onChange(of: appState.lastFileVerdict) {
+            Task { @MainActor in await reload() }
+        }
         .sheet(item: $selected) { record in
             RecordDetailView(record: record)
+        }
+        .confirmationDialog(
+            "Delete all history?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete all records", role: .destructive) { deleteAll() }
+        } message: {
+            Text("This removes every stored check. There is no undo.")
         }
     }
 
@@ -68,6 +89,7 @@ struct HistoryView: View {
         return records.filter { record in
             record.inputType.lowercased().contains(query)
                 || record.verdictKind.rawValue.lowercased().contains(query)
+                || record.verdictKind.historyTitle.lowercased().contains(query)
                 || record.inputHash.lowercased().contains(query)
         }
     }
@@ -98,21 +120,25 @@ struct HistoryView: View {
 
 struct RecordDetailView: View {
     let record: HistoryRecord
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
+            HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(record.verdictKind.rawValue)
+                    Text(record.verdictKind.historyTitle)
                         .font(.title2.weight(.semibold))
                     Text("\(record.inputType) · \(record.date.formatted(date: .abbreviated, time: .shortened))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text("\(record.confidenceValue.formatted(.percent.precision(.fractionLength(0)))) confidence")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .trailing, spacing: 8) {
+                    Text("\(record.confidenceValue.formatted(.percent.precision(.fractionLength(0)))) confidence")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Button("Done") { dismiss() }
+                }
             }
 
             Text("Input hash: \(record.inputHash)")

@@ -6,6 +6,16 @@ Update this file after every prompt so it acts as memory.
 
 ## Session log
 
+### 2026-08-15: Bug hunt pass over the macOS app
+
+- Settings reactivity was broken by design. AppState settings were computed properties over UserDefaults on an @Observable class, and Observation only tracks stored state. Result: toggling "Anthropic detection API" never revealed the key field, and the preset caption went stale. Separately, storeRawContent (stored, observable) was never written back to UserDefaults, so the raw-content preference reset every launch. Fix: settings are now stored observable properties loaded in init, persisted by one @MainActor onChange hook in the app scene.
+- Fixed a data-loss trap in Settings: the key field was prefilled with bullet characters and "Save key" would save those bullets over the real key. The field now starts empty and Save is disabled when empty.
+- History list was stale: records loaded once in .task and TabView keeps tabs alive, so new checks never appeared. Now reloads when a check completes (onChange of lastTextVerdict/lastFileVerdict). "Delete all" now asks for confirmation. Verdict kinds render as human titles instead of raw enum names, search matches those titles too, the empty state distinguishes no records from no matches, and the record sheet has a Done button.
+- Menu bar checks were silent: results landed in app state with no feedback. Both menu bar actions now open the main window after the check. Keyboard shortcuts added: Cmd+Return (check text), Cmd+O (choose file), Cmd+Shift+C (clipboard), Cmd+Shift+O (verify file), Cmd+Shift+S (export history).
+- AppState guards against overlapping analyses and clears a stale batch report when analyzing text.
+- Engine: C2PAVerifier now runs c2patool in a detached task (no main-thread freeze) and drains stdout/stderr on background threads (no pipe-buffer deadlock on large manifests). SHA-256 became an incremental digester; file records are hashed with a streaming SHA256.hashFile so verifying a large video never loads it into memory.
+- Tests: 3 new (streaming hash matches one-shot, empty file hash, file record hashes content not name). 41 pass on Linux Swift 6.0.3. The macOS app edits are compiled by CI on push, since the sandbox cannot build SwiftUI.
+
 ### 2026-08-15: Full format support in the app, checksummed releases
 
 - Closed the last format gap: the macOS app's file picker and drop zone now accept the full c2patool list (png, jpg, jpeg, svg, webp, avif, heic, heif, tif, tiff, dng, mp4, mov, m4a, mp3, wav, pdf). `CheckView` derives its allowed content types and the supported-formats caption from the engine's `MediaFormat.allCases`, so the UI cannot drift from what verification supports. jpg/jpeg, tif/tiff, and heic/heif are deduplicated by display name.
