@@ -5,6 +5,7 @@ struct CheckView: View {
     @Environment(AppState.self) private var appState
     @State private var mode: Mode = .text
     @State private var showImporter = false
+    @State private var showFolderImporter = false
     @State private var isTargeted = false
 
     enum Mode: String, CaseIterable, Identifiable {
@@ -30,10 +31,12 @@ struct CheckView: View {
             }
 
             HStack(spacing: 12) {
-                Button(mode == .text ? "Check text" : "Verify file") {
-                    run()
+                if mode == .text {
+                    Button("Check text") {
+                        run()
+                    }
+                    .disabled(appState.isAnalyzing)
                 }
-                .disabled(appState.isAnalyzing)
 
                 if appState.isAnalyzing {
                     ProgressView().controlSize(.small)
@@ -47,6 +50,8 @@ struct CheckView: View {
 
             if let verdict = appState.lastTextVerdict {
                 VerdictPanel(display: VerdictDisplay.text(verdict))
+            } else if let report = appState.lastBatchReport {
+                BatchReportView(report: report)
             } else if let verdict = appState.lastFileVerdict {
                 VerdictPanel(display: VerdictDisplay.file(verdict))
             } else {
@@ -78,9 +83,9 @@ struct CheckView: View {
                     isTargeted ? Color.accentColor : Color.secondary.opacity(0.4),
                     style: StrokeStyle(lineWidth: 1.5, dash: [6])
                 )
-                .frame(maxWidth: .infinity, minHeight: 180)
+                .frame(maxWidth: .infinity, minHeight: 160)
                 .overlay(
-                    Text(isTargeted ? "Drop to verify" : "Drag a png, jpg, jpeg, or svg here")
+                    Text(isTargeted ? "Drop to verify" : "Drag a png, jpg, svg, webp, pdf, mp4, or mov here")
                         .foregroundStyle(.secondary)
                 )
                 .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
@@ -88,17 +93,35 @@ struct CheckView: View {
                     return true
                 }
 
-            Button("Choose a file") {
-                showImporter = true
-            }
-            .fileImporter(
-                isPresented: $showImporter,
-                allowedContentTypes: [.png, .jpeg, .svg, .pdf, .data]
-            ) { result in
-                if case .success(let url) = result {
-                    Task { await appState.verifyFile(url) }
+            HStack(spacing: 12) {
+                Button("Choose a file") {
+                    showImporter = true
+                }
+                .fileImporter(
+                    isPresented: $showImporter,
+                    allowedContentTypes: [.png, .jpeg, .svg, .pdf, .webP, .mpeg4Movie, .quickTimeMovie, .data]
+                ) { result in
+                    if case .success(let url) = result {
+                        Task { await appState.verifyFile(url) }
+                    }
+                }
+
+                Button("Verify a folder") {
+                    showFolderImporter = true
+                }
+                .fileImporter(
+                    isPresented: $showFolderImporter,
+                    allowedContentTypes: [.folder]
+                ) { result in
+                    if case .success(let url) = result {
+                        Task { await appState.verifyFolder(url) }
+                    }
                 }
             }
+
+            Text("A folder scan verifies every supported file it contains and reports a per-file card. Unsupported files are skipped.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

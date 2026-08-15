@@ -11,6 +11,7 @@ final class AppState {
     var textInput = ""
     var lastTextVerdict: TextVerdict?
     var lastFileVerdict: FileVerdict?
+    var lastBatchReport: BatchReport?
     var isAnalyzing = false
     var statusMessage: String?
     var storeRawContent = false
@@ -93,6 +94,7 @@ final class AppState {
             let verdict = try await engine.verifyFile(at: url, options: options)
             lastFileVerdict = verdict
             lastTextVerdict = nil
+            lastBatchReport = nil
             statusMessage = nil
             let record = HistoryRecorder.record(
                 forFileVerdict: verdict,
@@ -102,6 +104,23 @@ final class AppState {
             try await history.add(record)
         } catch {
             statusMessage = "Verification failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Verifies every supported media file in a folder. A batch has no single
+    /// verdict, so it is not written to history; the report card is the record.
+    func verifyFolder(_ url: URL) async {
+        isAnalyzing = true
+        defer { isAnalyzing = false }
+        do {
+            let report = try await FolderVerifier(c2paToolPath: engine.c2paVerifier.toolPath)
+                .verifyDirectory(at: url)
+            lastBatchReport = report
+            lastTextVerdict = nil
+            lastFileVerdict = nil
+            statusMessage = nil
+        } catch {
+            statusMessage = "Folder scan failed: \(error.localizedDescription)"
         }
     }
 

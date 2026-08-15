@@ -45,6 +45,8 @@ The engine (`Sources/OriginCheckEngine`) has no SwiftUI imports. Layers depend d
 
 - Models: `VerdictKind`, `Confidence`, `EvidenceItem`, `TextVerdict`, `FileVerdict`, `C2PAClaim`, `HistoryRecord`, `AnalysisOptions`, `ThresholdPreset`.
 - `C2PAVerifier`: runs `c2patool` (path injectable), parses the manifest JSON leniently, maps to a `FileVerdict`. Unparseable output is reported as no manifest, never as a verdict on authorship.
+- `MediaFormat`: the list of file formats c2patool can verify today, with case-insensitive extension parsing and display names. Covers images (png, jpg, jpeg, svg, webp, avif, heic, heif, tif, tiff, dng), video (mp4, mov), audio (m4a, mp3, wav), and pdf (read-only).
+- `FolderVerifier`: scans a folder recursively, verifies every supported file with `C2PAVerifier`, and returns a `BatchReport` (summary counts, per-file verdicts, failures). One broken file does not stop the scan; hidden files and unsupported extensions are skipped. `toolMissing` flags the case where c2patool cannot be launched.
 - `TextWatermarkAnalyzer`: `TextWatermarkProvider` protocol, `LocalStatisticalAnalyzer` (honest unavailable), `AnthropicDetectionAPIProvider` (scaffolded, feature flagged, Keychain key via `KeyStoring`).
 - `VerdictCombiner`: merges provider results. A positive signal beats a negative one and the conflict is shown; short text caps confidence; all-unavailable reports notAvailable.
 - `HistoryStore`: `HistoryStoring` protocol, `JSONHistoryStore` actor, `HistoryRecorder` with hash-only defaults.
@@ -54,11 +56,13 @@ The app (`App/`) is a macOS-only SwiftUI package: Check tab (paste text or drop 
 
 ## Current state
 
-Built 2026-08-15, second session with code. The first session's web app was removed on the owner's request; this product replaced it.
+Built 2026-08-15, third session with code. The first session's web app was removed on the owner's request; this product replaced it.
 
-- Full engine implemented and verified: 27 unit tests pass on Linux Swift 6.0.3 (C2PA verdict mapping, confidence rules, combiner behavior, history persistence, SHA-256 vectors).
+- Full engine implemented and verified: 38 unit tests pass on Linux Swift 6.0.3 (C2PA verdict mapping, confidence rules, combiner behavior, history persistence, SHA-256 vectors, media format parsing, batch folder scans).
+- Batch folder verification shipped at the engine level: `FolderVerifier` walks a folder, verifies each supported file, and returns a report card with counts, per-file verdicts, and failures. Tested against all supported format families through the mock tool.
+- Format support expanded to the full c2patool list: webp, avif, heic, heif, tif, tiff, dng, mp4, mov, m4a, mp3, wav, and pdf join the original png, jpg, jpeg, svg. The macOS app accepts webp, pdf, mp4, and mov in the file importer and drop zone, and adds a folder scan entry point with a report card UI.
 - Fixtures: Claude-signed intact, modified after signing, unknown signer, expired certificate, plus a mock c2patool for demos.
-- The SwiftUI app is written but must be built on macOS; it cannot compile in the Linux sandbox.
+- The SwiftUI app is written but must be built on macOS; it cannot compile in the Linux sandbox. The folder scan UI is code-complete and unverified until a Mac build.
 - The engine was compiled and tested in the sandbox with a downloaded Swift toolchain.
 
 ## Known tradeoffs and open items
@@ -71,10 +75,10 @@ Built 2026-08-15, second session with code. The first session's web app was remo
 
 ## Roadmap, in priority order
 
-1. Build the app on a Mac, fix whatever Xcode surfaces, sandbox and notarize.
+1. Build the app on a Mac, fix whatever Xcode surfaces, sandbox and notarize. The batch report card UI lands here too, once a Mac is available.
 2. Real Anthropic detection API integration the moment it ships, behind the existing provider interface.
-3. Expand file formats: webp, pdf, mp4, mov through c2pa-rs (which already supports them).
-4. Batch folder verification with a report card, for the compliance market.
+3. Expand file formats: done at the engine level (full c2patool list). The app surfaces webp, pdf, mp4, and mov; the remaining formats can be added to the file importer when the app is built on a Mac.
+4. Batch folder verification: engine done and tested. Remaining work is Mac-side only: build the report card UI and decide whether batches write to history (currently they do not; a batch has no single verdict kind).
 5. SQLite-backed history.
 6. Multi-model support later; the provider architecture already isolates model-specific logic.
 

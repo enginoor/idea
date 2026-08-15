@@ -27,6 +27,8 @@ App/Sources/OriginCheckApp/       The SwiftUI app, menu bar extra, Keychain stor
 
 - The data model (`VerdictKind`, `Confidence`, `TextVerdict`, `FileVerdict`, `C2PAClaim`, `HistoryRecord`).
 - `C2PAVerifier`, which runs `c2patool` and parses its JSON output into a `FileVerdict`.
+- `MediaFormat`, the list of formats c2patool verifies today, with case-insensitive extension parsing.
+- `FolderVerifier`, which scans a folder, verifies every supported file, and returns a `BatchReport` with counts, per-file verdicts, and failures.
 - `TextWatermarkAnalyzer`, with a provider protocol, a local analyzer that honestly reports that detection parameters are not published, and a scaffolded `AnthropicDetectionAPIProvider` behind a feature flag.
 - `VerdictCombiner`, which merges provider results and applies the confidence rules.
 - `JSONHistoryStore`, hash-only by default, raw content only with explicit consent.
@@ -60,6 +62,20 @@ cargo install c2patool
 ```
 
 or with Homebrew if a formula is available. The tool path is injectable (`C2PAVerifier(toolPath:)`), and the engine throws a clear error if the tool is missing.
+
+Supported formats follow c2patool: png, jpg, jpeg, svg, webp, avif, heic, heif, tif, tiff, dng, mp4, mov, m4a, mp3, wav, and pdf (read-only). The macOS app surfaces the most common ones in its file picker; the engine accepts the full list, including folder scans.
+
+## Batch folder verification
+
+`FolderVerifier` scans a folder recursively and verifies every supported file it finds:
+
+```swift
+let verifier = FolderVerifier() // c2paToolPath is injectable
+let report = try await verifier.verifyDirectory(at: folderURL)
+print(report.summary.watermarked, report.summary.noManifest, report.summary.failed)
+```
+
+The report card holds factual counts, one verdict per file, and a list of failures. One broken file never stops the scan. Hidden files and unsupported extensions are skipped, and `toolMissing` reports honestly when c2patool cannot be launched. Batches are not written to history because a folder has no single verdict kind.
 
 To try the engine against realistic manifests without installing c2patool, point it at the mock tool:
 

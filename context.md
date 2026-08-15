@@ -16,6 +16,15 @@ Update this file after every prompt so it acts as memory.
 - Verification: 27 engine tests pass on Linux Swift 6.0.3. Found and fixed a SHA-256 byte masking bug during testing.
 - Repo layout: Package.swift + Sources/ + Tests/ at root, App/ for the macOS app, Fixtures/ for test data.
 
+### 2026-08-15: Formats expanded, batch folder verification shipped
+
+- Added `MediaFormat` to the engine: the full list of formats c2patool verifies today, with case-insensitive extension parsing and display names. Grounded in research on c2pa-rs current support (png, jpg, jpeg, svg, webp, avif, heic, heif, tif, tiff, dng, mp4, mov, m4a, mp3, wav, pdf read-only).
+- Added `FolderVerifier` to the engine: recursive folder scan, one verdict per supported file, failures collected without stopping the scan, hidden and unsupported files skipped, `toolMissing` flag when c2patool cannot launch. Returns a `BatchReport` with summary counts, sorted verdicts, and failures.
+- Wrote the macOS report card UI (`BatchReportView`), a folder picker in `CheckView`, and `AppState.verifyFolder`. App target still needs a Mac build; none of the app edits compile here.
+- Test suite grew from 27 to 38 tests, all passing on Linux Swift 6.0.3. New coverage: media format parsing, folder classification across format families, hidden/unsupported skipping, non-recursive scans, determinism, missing-tool behavior.
+- Fixed one over-strict test that treated the hyphen in "MPEG-4 audio" as a banned dash; the voice rule bans em and en dashes, not hyphens in technical names.
+- Batches are not written to history yet; a batch has no single verdict kind. Noted as a Mac-side open item.
+
 ### 2026-08-15: Standing rule, sync after every prompt
 
 - Owner asked that every change made in a session be committed and pushed to GitHub after every prompt. From now on, when a turn produces changes, commit them to main and push before the turn ends. Stage only the files that belong to that turn. Do not wait to be asked.
