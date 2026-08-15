@@ -53,7 +53,7 @@ cd App
 swift run OriginCheck
 ```
 
-or open `App/Package.swift` in Xcode.
+or open `App/Package.swift` in Xcode. SwiftPM identifies the engine by the checkout folder name, so build the app from a checkout of this repo whose folder is named `idea`. If you cloned into a differently named folder, change the `package:` reference in `App/Package.swift` to match.
 
 ## CI and releases
 

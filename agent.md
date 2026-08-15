@@ -86,6 +86,7 @@ Built 2026-08-15, third session with code. The first session's web app was remov
 
 - Engine tests: `swift test` (works on Linux and macOS). The sandbox has Swift at /opt/swift/usr/bin; add it to PATH if it is not there.
 - CI/CD: workflows live in `.github/workflows/`. `ci.yml` tests on every push; `release.yml` builds and publishes on `v*` tags and via workflow_dispatch. Packaging and notes are `Scripts/package-app.sh` and `Scripts/release-notes.sh`. Releases are ad-hoc signed, not notarized.
+- SwiftPM gotcha: the app package references the engine by path, and path dependencies are identified by the checkout folder name, not the manifest name. The repo folder is `idea`, so `App/Package.swift` uses `package: "idea"`. Renaming the checkout folder breaks the build; CI checks out into the repo name so it always matches.
 - The platform's web checks do not apply to this repo anymore. The engine test suite is the verification gate.
 - Keep copy in the tone above. Re-read any sentence that uses an em dash or a banned word.
 - Standing rule: every change is committed and pushed to GitHub at the end of the turn. context.md logs each session.

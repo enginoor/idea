@@ -2,6 +2,11 @@
 
 import PackageDescription
 
+// The engine is referenced as a path dependency (".."). SwiftPM identifies
+// path dependencies by the checkout directory name, not by the Package.swift
+// name field, so this package must be built from a checkout of enginoor/idea
+// whose folder is named "idea". GitHub Actions checks out into the repo name,
+// so CI matches. Renaming the folder breaks the reference.
 let package = Package(
     name: "OriginCheckApp",
     platforms: [
@@ -17,7 +22,7 @@ let package = Package(
         .executableTarget(
             name: "OriginCheckApp",
             dependencies: [
-                .product(name: "OriginCheckEngine", package: "OriginCheckEngine")
+                .product(name: "OriginCheckEngine", package: "idea")
             ]
         )
     ],
