@@ -18,6 +18,7 @@ jobs:
   test:
     name: Engine tests (gate)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: swift-actions/setup-swift@v2
@@ -29,7 +30,8 @@ jobs:
   release:
     name: Build and publish the macOS release
     needs: test
-    runs-on: macos-15
+    runs-on: macos-14
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:

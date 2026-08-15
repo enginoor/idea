@@ -9,6 +9,7 @@ jobs:
   test-linux:
     name: Engine tests (Linux)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: swift-actions/setup-swift@v2
@@ -19,7 +20,12 @@ jobs:
 
   test-and-build-macos:
     name: Engine tests and app build (macOS)
-    runs-on: macos-15
+    # The app targets macOS 14, and building on the minimum supported OS
+    # catches accidental use of newer APIs. macos-14 is also a separate
+    # runner image from macos-15, so a degraded macos-15 image cannot
+    # silently take the whole pipeline down.
+    runs-on: macos-14
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - name: Run the engine test suite
