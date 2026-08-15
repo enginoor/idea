@@ -9,7 +9,7 @@ on:
       version:
         description: "Version to release, without the v prefix"
         required: true
-        default: "0.1.0"
+        type: string
 
 permissions:
   contents: write
@@ -28,16 +28,16 @@ jobs:
         run: swift test
 
   release:
-    name: Build and publish the macOS release
+    name: Build, package, sign, and publish
     needs: test
     runs-on: macos-14
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Resolve version and artifact name
+      - name: Resolve version and build number
         id: names
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
@@ -45,46 +45,172 @@ jobs:
           else
             VERSION="${GITHUB_REF_NAME#v}"
           fi
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "error: invalid version '${VERSION}'" >&2
+            exit 1
+          fi
+          BUILD_NUMBER="$(date -u +%Y%m%d%H%M%S)"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
-          echo "artifact=OriginCheck-${VERSION}-macOS.zip" >> "${GITHUB_OUTPUT}"
+          echo "build=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
+          echo "tag=v${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run the engine test suite on macOS
+        run: swift test
+
+      - name: Resolve Swift package dependencies (fetches Sparkle)
+        run: cd App && swift package resolve
 
       - name: Build the app in release mode
         run: cd App && swift build -c release
 
+      # Optional: dmgbuild produces the branded drag-to-install layout.
+      # If it cannot be installed, make-dmg.sh falls back to a plain
+      # hdiutil DMG, which is still validated and published.
+      - name: Install dmgbuild
+        continue-on-error: true
+        run: |
+          python3 -m venv /tmp/dmgbuild-venv
+          /tmp/dmgbuild-venv/bin/pip install --quiet dmgbuild
+
       - name: Package the app bundle
+        env:
+          VERSION: ${{ steps.names.outputs.version }}
+          BUILD: ${{ steps.names.outputs.build }}
+        run: bash Scripts/package-app.sh "${VERSION}" "${BUILD}" "${PWD}"
+
+      - name: Validate the app bundle
+        env:
+          VERSION: ${{ steps.names.outputs.version }}
+          BUILD: ${{ steps.names.outputs.build }}
+        run: SMOKE_TEST=1 bash Scripts/validate-app.sh "build/OriginCheck.app" "${VERSION}" "${BUILD}"
+
+      - name: Build the DMG
+        env:
+          VERSION: ${{ steps.names.outputs.version }}
+          DMGBUILD: /tmp/dmgbuild-venv/bin/dmgbuild
+        run: bash Scripts/make-dmg.sh "${VERSION}" "${PWD}"
+
+      - name: Validate the DMG (mounted, app and Applications shortcut present)
+        env:
+          VERSION: ${{ steps.names.outputs.version }}
+          BUILD: ${{ steps.names.outputs.build }}
+        run: SMOKE_TEST=1 bash Scripts/validate-dmg.sh "build/OriginCheck-${VERSION}.dmg" "OriginCheck.app" "${VERSION}" "${BUILD}"
+
+      - name: Sign the exact DMG for Sparkle
+        id: sign
+        env:
+          VERSION: ${{ steps.names.outputs.version }}
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${SPARKLE_PRIVATE_KEY}" ]]; then
+            echo "error: the SPARKLE_PRIVATE_KEY secret is not set. Generate keys with bash Scripts/generate-sparkle-keys.sh and store the private key in the repository secrets." >&2
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "${SPARKLE_PRIVATE_KEY}" > "${RUNNER_TEMP}/sparkle-private-key.pem"
+          OUTPUT="$(bash Scripts/sign-update.sh "build/OriginCheck-${VERSION}.dmg" "${RUNNER_TEMP}/sparkle-private-key.pem")"
+          rm -f "${RUNNER_TEMP}/sparkle-private-key.pem"
+          ED_SIGNATURE="$(echo "${OUTPUT}" | sed -n 's/^ed_signature=//p')"
+          LENGTH="$(echo "${OUTPUT}" | sed -n 's/^length=//p')"
+          if [[ -z "${ED_SIGNATURE}" || -z "${LENGTH}" ]]; then
+            echo "error: failed to extract the signature: ${OUTPUT}" >&2
+            exit 1
+          fi
+          echo "ed_signature=${ED_SIGNATURE}" >> "${GITHUB_OUTPUT}"
+          echo "length=${LENGTH}" >> "${GITHUB_OUTPUT}"
+
+      - name: Update the update feed (appcast.xml)
+        env:
+          VERSION: ${{ steps.names.outputs.version }}
+          BUILD: ${{ steps.names.outputs.build }}
+          TAG: ${{ steps.names.outputs.tag }}
+          ED_SIGNATURE: ${{ steps.sign.outputs.ed_signature }}
+          LENGTH: ${{ steps.sign.outputs.length }}
+        run: |
+          APPCAST_PATH="${PWD}/appcast.xml" \
+          RELEASE_VERSION="${VERSION}" \
+          BUILD="${BUILD}" \
+          ED_SIGNATURE="${ED_SIGNATURE}" \
+          LENGTH="${LENGTH}" \
+          DOWNLOAD_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/OriginCheck-${VERSION}.dmg" \
+          python3 Scripts/update-appcast.py
+
+      - name: Validate the update feed
+        env:
+          VERSION: ${{ steps.names.outputs.version }}
+          BUILD: ${{ steps.names.outputs.build }}
+        run: bash Scripts/validate-feed.sh "${PWD}" "${VERSION}" "${BUILD}" "${GITHUB_REPOSITORY}"
+
+      - name: Commit the update feed to main
+        env:
+          TAG: ${{ steps.names.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add appcast.xml
+          if ! git diff --cached --quiet; then
+            git commit -m "Add ${TAG} to appcast.xml"
+            git push origin HEAD:main
+          fi
+
+      - name: Write the checksums file
         id: package
         env:
           VERSION: ${{ steps.names.outputs.version }}
         run: |
-          bash Scripts/package-app.sh "${VERSION}" "${PWD}"
-          ZIP="OriginCheck-${VERSION}-macOS.zip"
-          CHECKSUM="$(shasum -a 256 "${ZIP}" | awk '{print $1}')"
+          DMG="build/OriginCheck-${VERSION}.dmg"
+          CHECKSUM="$(shasum -a 256 "${DMG}" | awk '{print $1}')"
+          printf '%s  %s\n' "${CHECKSUM}" "OriginCheck-${VERSION}.dmg" > build/checksums.txt
+          shasum -a 256 -c build/checksums.txt
           echo "checksum=${CHECKSUM}" >> "${GITHUB_OUTPUT}"
-          printf '%s  %s\n' "${CHECKSUM}" "${ZIP}" > checksums.txt
-          echo "SHA-256: ${CHECKSUM}"
-          cat checksums.txt
-
-      - name: Verify the checksum file
-        run: shasum -a 256 -c checksums.txt
 
       - name: Write structured release notes
         env:
           VERSION: ${{ steps.names.outputs.version }}
           CHECKSUM: ${{ steps.package.outputs.checksum }}
-        run: bash Scripts/release-notes.sh "${VERSION}" "${CHECKSUM}" > "${RUNNER_TEMP}/release-notes.md"
+        run: bash Scripts/release-notes.sh "${VERSION}" "${CHECKSUM}" > build/release-notes.md
 
       - name: Publish the GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.names.outputs.version }}
-          ARTIFACT: ${{ steps.names.outputs.artifact }}
+          TAG: ${{ steps.names.outputs.tag }}
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TAG="v${VERSION}"
+          if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; uploading assets."
+            gh release upload "${TAG}" "build/OriginCheck-${VERSION}.dmg" build/checksums.txt \
+              --repo "${GITHUB_REPOSITORY}" --clobber
           else
-            TAG="${GITHUB_REF_NAME}"
+            gh release create "${TAG}" "build/OriginCheck-${VERSION}.dmg" build/checksums.txt \
+              --repo "${GITHUB_REPOSITORY}" \
+              --target "${GITHUB_SHA}" \
+              --title "OriginCheck ${VERSION}" \
+              --notes-file build/release-notes.md
           fi
-          gh release create "${TAG}" "${ARTIFACT}" checksums.txt \
-            --repo "${GITHUB_REPOSITORY}" \
-            --title "OriginCheck ${VERSION}" \
-            --notes-file "${RUNNER_TEMP}/release-notes.md"
+
+      - name: Verify the published artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.names.outputs.version }}
+          TAG: ${{ steps.names.outputs.tag }}
+          CHECKSUM: ${{ steps.package.outputs.checksum }}
+        run: |
+          DMG_ASSET="OriginCheck-${VERSION}.dmg"
+          FOUND="$(gh api "/repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
+            --jq "[.assets[].name] | index(\"${DMG_ASSET}\") != null")"
+          [[ "${FOUND}" == "true" ]] || { echo "error: ${DMG_ASSET} missing from release ${TAG}"; exit 1; }
+          # Byte-level check: download the published asset and compare hashes.
+          mkdir -p /tmp/release-verify
+          for _ in $(seq 1 6); do
+            if gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+              --pattern "${DMG_ASSET}" --dir /tmp/release-verify >/dev/null 2>&1; then
+              break
+            fi
+            sleep 10
+          done
+          DOWNLOADED="$(shasum -a 256 "/tmp/release-verify/${DMG_ASSET}" | awk '{print $1}')"
+          if [[ "${DOWNLOADED}" != "${CHECKSUM}" ]]; then
+            echo "error: published DMG checksum mismatch (${DOWNLOADED} != ${CHECKSUM})" >&2
+            exit 1
+          fi
+          echo "Published artifact verified: ${DMG_ASSET} matches the built checksum"

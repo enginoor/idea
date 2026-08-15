@@ -5,6 +5,14 @@ struct OriginCheckApp: App {
     @State private var appState = AppState()
     @Environment(\.openWindow) private var openWindow
 
+    @MainActor
+    init() {
+        // Start Sparkle's updater at launch so scheduled background checks
+        // run even if no window is ever opened. The updater reads the feed
+        // URL and public key from the packaged Info.plist.
+        UpdateController.shared.start()
+    }
+
     var body: some Scene {
         WindowGroup("OriginCheck", id: "main") {
             MainView()
@@ -36,6 +44,14 @@ struct OriginCheckApp: App {
                     }
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+            }
+
+            // The conventional home for "Check for Updates" is the app
+            // menu, right below About.
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates...") {
+                    UpdateController.shared.checkForUpdates(nil)
+                }
             }
         }
 

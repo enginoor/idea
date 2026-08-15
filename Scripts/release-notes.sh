@@ -7,10 +7,11 @@ VERSION="${1:?version required}"
 CHECKSUM="${2:-}"
 
 SINCE="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+CHANGES=""
 if [[ -n "${SINCE}" ]]; then
   CHANGES="$(git log --oneline --no-decorate "${SINCE}..HEAD" 2>/dev/null | sed 's/^/- /' || true)"
 fi
-if [[ -z "${CHANGES:-}" ]]; then
+if [[ -z "${CHANGES}" ]]; then
   CHANGES="- Initial release of the engine and the macOS app."
 fi
 
@@ -25,20 +26,25 @@ ${CHANGES}
 
 ## The artifact
 
-- File: OriginCheck-${VERSION}-macOS.zip
+- File: OriginCheck-${VERSION}.dmg
 - Platform: macOS 14 or later, Apple Silicon and Intel
 - SHA-256: \`${CHECKSUM:-computed at build time and printed in the build log}\`
+- Signed for updates with Sparkle's EdDSA key. Updates are verified against the published signature before they are installed.
+
+## Install
+
+1. Download OriginCheck-${VERSION}.dmg and open it.
+2. Drag OriginCheck.app into the Applications folder.
+3. Right-click the app and choose Open the first time. This build is ad-hoc signed, so macOS asks once.
+4. For file verification, install c2patool once: \`cargo install c2patool\`. Text checks work without it and report the honest unavailable state.
+
+## Automatic updates
+
+The app checks the update feed in the background and can download and install future releases through Sparkle. Updates are never installed without your approval, and your preferences and history survive every update.
 
 ## Supported formats
 
 png, jpg, jpeg, svg, webp, avif, heic, heif, tif, tiff, dng, mp4, mov, m4a, mp3, wav, pdf (read-only).
-
-## Install
-
-1. Download OriginCheck-${VERSION}-macOS.zip and unzip it.
-2. Move OriginCheck.app to your Applications folder.
-3. Right-click the app and choose Open the first time. This build is ad-hoc signed, so macOS asks once.
-4. For file verification, install c2patool once: \`cargo install c2patool\`. Text checks work without it and report the honest unavailable state.
 
 ## Privacy
 
@@ -54,5 +60,7 @@ Everything runs locally. No telemetry, no accounts, no cloud. History stores a S
 \`\`\`
 swift test
 cd App && swift build -c release
+sh Scripts/package-app.sh <version> <build> .
+sh Scripts/make-dmg.sh <version> .
 \`\`\`
 EOF

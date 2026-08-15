@@ -15,3 +15,17 @@ xcuserdata/
 
 # App-specific
 *.xcworkspace/xcuserdata/
+
+# Release build outputs (Scripts/package-app.sh, make-dmg.sh, ...)
+build/
+*.dmg
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Sparkle signing secrets. The public key (Sparkle/public-key.txt) is
+# committed on purpose; private keys and exports must never be.
+Sparkle/*.pem
+Sparkle/private-key*
+Sparkle/*-export*
