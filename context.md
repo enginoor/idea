@@ -6,6 +6,9 @@ Update this file after every prompt so it acts as memory.
 
 ## Session log
 
+### 2026-08-15 — Standing rule: sync after every prompt
+- User asked that every change made in a session be committed and pushed to GitHub after every prompt. From now on, when a turn produces changes, commit them to main and push before the turn ends. Stage only the files that belong to that turn. Do not wait to be asked.
+
 ### 2026-08-15 — First build (agent.md, full app)
 
 - User asked for an agent.md thinking document, real research before building, and a humanized, modern product. Rules: no em dashes, no decorative icons, no emojis anywhere.
