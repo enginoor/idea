@@ -62,7 +62,7 @@ Built 2026-08-15, third session with code. The first session's web app was remov
 - Batch folder verification shipped at the engine level: `FolderVerifier` walks a folder, verifies each supported file, and returns a report card with counts, per-file verdicts, and failures. Tested against all supported format families through the mock tool.
 - Format support expanded to the full c2patool list: webp, avif, heic, heif, tif, tiff, dng, mp4, mov, m4a, mp3, wav, and pdf join the original png, jpg, jpeg, svg. The macOS app accepts webp, pdf, mp4, and mov in the file importer and drop zone, and adds a folder scan entry point with a report card UI.
 - Fixtures: Claude-signed intact, modified after signing, unknown signer, expired certificate, plus a mock c2patool for demos.
-- The SwiftUI app is written but must be built on macOS; it cannot compile in the Linux sandbox. The folder scan UI is code-complete and unverified until a Mac build.
+- The SwiftUI app compiles and is verified: CI builds it on macOS runners on every push. The Linux sandbox cannot compile it, so CI is the compile gate. The first real build surfaced Swift 6 concurrency errors that are now fixed: AppState is @MainActor, every Task that touches it is explicitly @MainActor, and the text editor helper binds correctly.
 - The engine was compiled and tested in the sandbox with a downloaded Swift toolchain.
 
 ## Known tradeoffs and open items
@@ -75,7 +75,7 @@ Built 2026-08-15, third session with code. The first session's web app was remov
 
 ## Roadmap, in priority order
 
-1. Build the app on a Mac, fix whatever Xcode surfaces, sandbox and notarize. GitHub Actions now builds the app on macOS runners on every push, so Xcode surface errors show up in CI instead of on the owner's machine. Sandbox and notarize remain open.
+1. Build the app on a Mac, fix whatever Xcode surfaces, sandbox and notarize. Done through CI: the app compiles on macOS runners on every push and in the release pipeline. Sandboxing and notarization remain open and need an Apple Developer certificate.
 2. Real Anthropic detection API integration the moment it ships, behind the existing provider interface.
 3. Expand file formats: done at the engine level (full c2patool list). The app surfaces webp, pdf, mp4, and mov; the remaining formats can be added to the file importer when the app is built on a Mac.
 4. Batch folder verification: engine done and tested. Remaining work is Mac-side only: build the report card UI and decide whether batches write to history (currently they do not; a batch has no single verdict kind).
@@ -86,6 +86,8 @@ Built 2026-08-15, third session with code. The first session's web app was remov
 
 - Engine tests: `swift test` (works on Linux and macOS). The sandbox has Swift at /opt/swift/usr/bin; add it to PATH if it is not there.
 - CI/CD: workflows live in `.github/workflows/`. `ci.yml` tests on every push; `release.yml` builds and publishes on `v*` tags and via workflow_dispatch. Packaging and notes are `Scripts/package-app.sh` and `Scripts/release-notes.sh`. Releases are ad-hoc signed, not notarized.
+- Release process verified end to end: v0.1.0 is published with a zipped OriginCheck.app, a SHA-256 checksum in the notes, and the structured template. Future releases: tag vX.Y.Z and push; the pipeline gates on tests, builds, packages, and publishes.
+- Swift 6 gotcha in the app: `Task {}` does not inherit MainActor isolation, and observable app state must be `@MainActor` or every capture into a Task is a data-race error. Follow the existing patterns in CheckView and MenuBar when adding async UI work.
 - SwiftPM gotcha: the app package references the engine by path, and path dependencies are identified by the checkout folder name, not the manifest name. The repo folder is `idea`, so `App/Package.swift` uses `package: "idea"`. Renaming the checkout folder breaks the build; CI checks out into the repo name so it always matches.
 - The platform's web checks do not apply to this repo anymore. The engine test suite is the verification gate.
 - Keep copy in the tone above. Re-read any sentence that uses an em dash or a banned word.

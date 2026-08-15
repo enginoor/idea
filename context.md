@@ -33,6 +33,14 @@ Update this file after every prompt so it acts as memory.
 - README gained a CI badge and a CI and releases section. agent.md updated with the CI/CD working notes.
 - Next: watch CI turn green, then tag v0.1.0 to cut the first release. If the macOS app build surfaces Swift errors, fix them and re-push.
 
+### 2026-08-15: CI green, first release shipped (v0.1.0)
+
+- CI iterated on three pushes. Run 1 failed on the SwiftPM package identity gotcha: path dependencies are identified by the checkout folder name, so App/Package.swift now references the engine as package "idea" instead of "OriginCheckEngine".
+- Run 2 surfaced the first real compile of the app target: Swift 6 strict concurrency errors. Task closures do not inherit MainActor isolation, so every Task touching AppState became explicitly @MainActor, and AppState itself is now @MainActor, the canonical pattern for observable app state. A Bindable local in the text editor helper needed an explicit return.
+- Run 3 went green: engine tests pass on Linux and macOS, app compiles on macOS 15. The app target is now verified for the first time.
+- Tagged v0.1.0 and pushed. The release pipeline gated on tests, built in release mode, packaged OriginCheck.app (ad-hoc signed) with Scripts/package-app.sh, wrote notes with Scripts/release-notes.sh, and published via gh: https://github.com/enginoor/idea/releases/tag/v0.1.0. Artifact OriginCheck-0.1.0-macOS.zip, SHA-256 f5c09a4107cbd2d22e5dd68ada674451acc3a0f57aa14dc34945fdcd2c42af36.
+- Standing rules still apply: every change committed and pushed; agent.md and context.md kept current.
+
 ### 2026-08-15: Standing rule, sync after every prompt
 
 - Owner asked that every change made in a session be committed and pushed to GitHub after every prompt. From now on, when a turn produces changes, commit them to main and push before the turn ends. Stage only the files that belong to that turn. Do not wait to be asked.
