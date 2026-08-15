@@ -48,7 +48,17 @@ public actor JSONHistoryStore: HistoryStoring {
     private func load() throws -> [HistoryRecord] {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return [] }
         let data = try Data(contentsOf: fileURL)
-        return try decoder.decode([HistoryRecord].self, from: data)
+        do {
+            return try decoder.decode([HistoryRecord].self, from: data)
+        } catch {
+            // The file cannot be decoded as history. Quarantine the bytes so
+            // the evidence is not silently overwritten, then start fresh:
+            // one corrupt record must not brick every later add or delete.
+            let quarantine = fileURL.deletingLastPathComponent()
+                .appendingPathComponent("history-corrupt-\(Int(Date().timeIntervalSince1970)).json")
+            try? FileManager.default.moveItem(at: fileURL, to: quarantine)
+            return []
+        }
     }
 
     private func save(_ records: [HistoryRecord]) throws {

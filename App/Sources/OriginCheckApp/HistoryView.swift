@@ -95,7 +95,9 @@ struct HistoryView: View {
     }
 
     private func reload() async {
-        records = (try? await appState.history.allRecords()) ?? []
+        let loaded = (try? await appState.history.allRecords()) ?? []
+        // Newest first: the check you just made is the one you want to see.
+        records = loaded.sorted { $0.date > $1.date }
     }
 
     private func export() {

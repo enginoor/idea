@@ -15,7 +15,6 @@ final class AppState {
     var lastBatchReport: BatchReport?
     var isAnalyzing = false
     var statusMessage: String?
-    var storeRawContent = false
 
     private let defaults = UserDefaults.standard
 

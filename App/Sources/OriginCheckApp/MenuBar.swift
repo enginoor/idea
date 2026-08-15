@@ -21,11 +21,12 @@ struct MenuBarContent: View {
         guard let text = NSPasteboard.general.string(forType: .string),
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return }
+        // Bring the window forward before the check runs so a menu bar
+        // action is never silent: the user sees the spinner, then the
+        // verdict lands in the Check tab.
+        openWindow(id: "main")
         Task { @MainActor in
             await appState.analyzeText(text)
-            // The verdict lands in the Check tab; bring the window forward so
-            // a menu bar check is never silent.
-            openWindow(id: "main")
         }
     }
 
@@ -35,9 +36,9 @@ struct MenuBarContent: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        openWindow(id: "main")
         Task { @MainActor in
             await appState.verifyFile(url)
-            openWindow(id: "main")
         }
     }
 }

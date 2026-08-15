@@ -14,7 +14,11 @@ struct BatchReportView: View {
                 toolMissingBanner
             }
             summaryGrid
-            if !report.failures.isEmpty {
+            // When the tool is missing, every supported file fails with the
+            // same cause; the banner above already says it, so listing all of
+            // them would only repeat it. Per-file failures are shown only
+            // when the scan actually ran.
+            if !report.toolMissing && !report.failures.isEmpty {
                 failuresSection
             }
             if !report.verdicts.isEmpty {
@@ -90,7 +94,7 @@ struct BatchReportView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Failures")
                 .font(.subheadline.weight(.semibold))
-            ForEach(report.failures) { failure in
+            ForEach(report.failures.prefix(20)) { failure in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(failure.fileName)
                         .font(.subheadline)
@@ -98,6 +102,11 @@ struct BatchReportView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            if report.failures.count > 20 {
+                Text("+ \(report.failures.count - 20) more failures")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(10)

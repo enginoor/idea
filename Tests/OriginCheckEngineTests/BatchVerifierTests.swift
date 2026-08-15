@@ -26,6 +26,7 @@ final class BatchVerifierTests: XCTestCase {
           *modified*) cat "\(modified)" ;;
           *unknown*) cat "\(unknown)" ;;
           *expired*) cat "\(expired)" ;;
+          *sleepy*) while :; do :; done ;;
           *) echo "No C2PA manifest found." >&2; exit 1 ;;
         esac
         """
@@ -128,6 +129,21 @@ final class BatchVerifierTests: XCTestCase {
         XCTAssertEqual(first.verdicts.map(\.fileName), second.verdicts.map(\.fileName))
         XCTAssertEqual(first.verdicts.map(\.format), second.verdicts.map(\.format))
         XCTAssertEqual(first.verdicts.map(\.kind), second.verdicts.map(\.kind))
+    }
+
+    func testToolTimeoutIsAPerFileFailureNotToolMissing() async throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OriginCheckScan-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("dummy bytes".utf8).write(to: root.appendingPathComponent("video-sleepy.mp4"))
+
+        let report = try await FolderVerifier(c2paToolPath: stubToolURL.path, toolTimeout: 1)
+            .verifyDirectory(at: root)
+
+        XCTAssertFalse(report.toolMissing)
+        XCTAssertEqual(report.summary.failed, 1)
+        XCTAssertEqual(report.verdicts.count, 0)
+        XCTAssertTrue(report.failures.allSatisfy { $0.reason.contains("timed out") })
     }
 
     func testMissingToolMarksEveryFileFailed() async throws {

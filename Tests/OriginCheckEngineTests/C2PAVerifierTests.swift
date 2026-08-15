@@ -26,6 +26,7 @@ final class C2PAVerifierTests: XCTestCase {
           *modified*) cat "\(modified)" ;;
           *unknown*) cat "\(unknown)" ;;
           *expired*) cat "\(expired)" ;;
+          *sleepy*) while :; do :; done ;;
           *) echo "No C2PA manifest found." >&2; exit 1 ;;
         esac
         """
@@ -152,6 +153,27 @@ final class C2PAVerifierTests: XCTestCase {
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
+    }
+
+    func testHungToolTimesOutInsteadOfHangingForever() async throws {
+        let url = try makeDummyFile(named: "video-sleepy.mp4")
+        let verifier = C2PAVerifier(toolPath: stubToolURL.path, timeout: 1)
+        let start = Date()
+        do {
+            _ = try await verifier.verifyFile(at: url)
+            XCTFail("Expected toolTimeout error")
+        } catch let error as C2PAVerifier.VerificationError {
+            if case .toolTimeout = error {
+                // expected
+            } else {
+                XCTFail("Unexpected error: \(error)")
+            }
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        // The stub sleeps 10 seconds; the verifier must return long before
+        // that instead of waiting for the tool to finish.
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5)
     }
 
     func testUnknownsNeverIncreaseConfidence() async throws {

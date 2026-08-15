@@ -56,7 +56,14 @@ The app (`App/`) is a macOS-only SwiftUI package: Check tab (paste text or drop 
 
 ## Current state
 
-Built 2026-08-15, third session with code. The first session's web app was removed on the owner's request; this product replaced it.
+Built 2026-08-15, fourth session with code. The first session's web app was removed on the owner's request; this product replaced it.
+
+- Second bug-hunt pass, 2026-08-15. The previous pass shipped a duplicate `storeRawContent` declaration in AppState (the settings block re-declared a property that already existed above it), which turned CI red with `invalid redeclaration`. Removed the duplicate; the macOS app target compiles again on push.
+- c2patool runs now have a timeout (30 s default, injectable). A hung tool previously left `isAnalyzing` true forever and blocked every later check. The verifier terminates the process, then escalates to SIGKILL when Foundation's SIGTERM delivery fails (observed on Linux: `terminate()` left the busy child alive and unreaped), then fails the check with an honest message. Batches treat a timeout as a per-file failure, not a missing tool.
+- History corruption is quarantined, not fatal. A history.json that fails to decode is moved aside as `history-corrupt-<timestamp>.json` and the store starts fresh, so one corrupt byte can no longer brick every add and delete.
+- Batch report UI no longer floods: when the tool is missing the banner alone explains it (the per-file list would repeat the same cause N times), and a real failures list is capped at 20 rows with a +N more line.
+- Drop zone now verifies every dropped file in order; it used to silently check only the first. The menu bar opens the main window before a clipboard or file check runs, so the user sees progress. History lists newest first.
+- Engine suite is 44 tests, all passing on Linux Swift 6.0.3. The app edits are compiled by CI on push, since the sandbox cannot build SwiftUI.
 
 - Full engine implemented and verified: 38 unit tests pass on Linux Swift 6.0.3 (C2PA verdict mapping, confidence rules, combiner behavior, history persistence, SHA-256 vectors, media format parsing, batch folder scans).
 - Batch folder verification shipped at the engine level: `FolderVerifier` walks a folder, verifies each supported file, and returns a report card with counts, per-file verdicts, and failures. Tested against all supported format families through the mock tool.

@@ -186,13 +186,24 @@ struct CheckView: View {
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) {
-        guard let provider = providers.first else { return }
-        _ = provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-            if let data = item as? Data,
-               let url = URL(dataRepresentation: data, relativeTo: nil) {
-                Task { @MainActor in
+        // Every dropped file is verified, one after another. Checking only
+        // the first item would silently drop the rest, and firing them all
+        // at once would trip the overlapping-analysis guard.
+        Task { @MainActor in
+            for provider in providers {
+                if let url = await loadFileURL(from: provider) {
                     await appState.verifyFile(url)
                 }
+            }
+        }
+    }
+
+    /// Bridges the completion-based NSItemProvider API into async/await.
+    private func loadFileURL(from provider: NSItemProvider) async -> URL? {
+        await withCheckedContinuation { continuation in
+            _ = provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                let url = (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
+                continuation.resume(returning: url)
             }
         }
     }

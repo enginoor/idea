@@ -84,8 +84,8 @@ public struct BatchReport: Codable, Sendable, Equatable {
 public struct FolderVerifier: Sendable {
     public let c2paVerifier: C2PAVerifier
 
-    public init(c2paToolPath: String = "c2patool") {
-        self.c2paVerifier = C2PAVerifier(toolPath: c2paToolPath)
+    public init(c2paToolPath: String = "c2patool", toolTimeout: TimeInterval = 30) {
+        self.c2paVerifier = C2PAVerifier(toolPath: c2paToolPath, timeout: toolTimeout)
     }
 
     public func verifyDirectory(
@@ -105,6 +105,10 @@ public struct FolderVerifier: Sendable {
                 switch error {
                 case .toolUnavailable(let message):
                     toolMissing = true
+                    failures.append(BatchFailure(fileName: file.lastPathComponent, reason: message))
+                case .toolTimeout(let message):
+                    // A timeout is a per-file failure, not a missing tool:
+                    // the scan continues with the remaining files.
                     failures.append(BatchFailure(fileName: file.lastPathComponent, reason: message))
                 case .fileUnreadable(let path):
                     failures.append(BatchFailure(

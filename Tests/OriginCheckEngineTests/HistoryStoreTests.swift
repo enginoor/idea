@@ -163,6 +163,35 @@ final class HistoryStoreTests: XCTestCase {
         XCTAssertEqual(loaded.first?.rawText, "Essay the user consented to keep.")
     }
 
+    func testCorruptHistoryFileIsQuarantinedNotFatal() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("OriginCheckHistory-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let fileURL = dir.appendingPathComponent("history.json")
+        try Data("this is not JSON history".utf8).write(to: fileURL)
+
+        let store = JSONHistoryStore(fileURL: fileURL)
+        let loaded = try await store.allRecords()
+        XCTAssertTrue(loaded.isEmpty)
+
+        // The unreadable bytes were moved aside, not silently overwritten.
+        let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+        XCTAssertTrue(files.contains { $0.hasPrefix("history-corrupt-") })
+
+        // The store is usable again: new records save and read back.
+        let record = HistoryRecord(
+            inputType: "text",
+            inputHash: "abc123",
+            verdictKind: .notAvailable,
+            confidenceValue: 0,
+            evidence: [EvidenceItem(source: "Test", kind: "fixture", summary: "A record.")]
+        )
+        try await store.add(record)
+        let after = try await store.allRecords()
+        XCTAssertEqual(after.count, 1)
+        XCTAssertEqual(after.first?.inputHash, "abc123")
+    }
+
     func testEmptyStoreReturnsEmpty() async throws {
         let store = try makeStore()
         let loaded = try await store.allRecords()

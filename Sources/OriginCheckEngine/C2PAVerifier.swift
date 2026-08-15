@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
 
 /// Verifies C2PA manifests in media files by running the reference
 /// `c2patool` command line tool and parsing its JSON output.
@@ -9,13 +14,20 @@ import Foundation
 public struct C2PAVerifier: Sendable {
     public let toolPath: String
 
-    public init(toolPath: String = "c2patool") {
+    /// How long the tool may run before it is terminated and the check fails.
+    /// A hung tool (a malformed file, a slow network volume) must not leave
+    /// the app stuck in an analyzing state forever.
+    public let timeout: TimeInterval
+
+    public init(toolPath: String = "c2patool", timeout: TimeInterval = 30) {
         self.toolPath = toolPath
+        self.timeout = timeout
     }
 
     public enum VerificationError: Error, Sendable {
         case fileUnreadable(String)
         case toolUnavailable(String)
+        case toolTimeout(String)
     }
 
     public func verifyFile(at url: URL) async throws -> FileVerdict {
@@ -87,6 +99,33 @@ public struct C2PAVerifier: Sendable {
             (try? errBox.handle.readToEnd()) ?? Data()
         }
 
+        // Wait with a deadline. A stuck tool must fail the check, not leave
+        // the caller waiting forever. terminate() sends SIGTERM, which some
+        // Foundation/Linux contexts can fail to deliver, so when the process
+        // is still alive shortly after, escalate to SIGKILL and reap it.
+        // The drain tasks are deliberately not awaited on this path: a
+        // grandchild holding the pipe could keep readToEnd blocked long
+        // after the direct child died. They finish on their own once the
+        // pipe closes.
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning {
+            if Date() >= deadline {
+                process.terminate()
+                let reapDeadline = Date().addingTimeInterval(1)
+                while process.isRunning && Date() < reapDeadline {
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                }
+                if process.isRunning {
+                    kill(process.processIdentifier, SIGKILL)
+                    process.waitUntilExit()
+                }
+                throw VerificationError.toolTimeout(
+                    "Verification timed out after \(Int(timeout)) seconds. "
+                        + "The tool may be stuck on this file or the volume may be slow: \(toolPath)"
+                )
+            }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
         process.waitUntilExit()
 
         let outData = await outRead.value

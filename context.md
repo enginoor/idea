@@ -6,6 +6,17 @@ Update this file after every prompt so it acts as memory.
 
 ## Session log
 
+### 2026-08-15: Second bug-hunt pass, CI fixed and hardened
+
+- CI was red on the last push of the previous pass: the settings rewrite re-declared `storeRawContent` (the new stored property joined a copy that already existed in the analysis-state block), and the macOS app target failed with `invalid redeclaration of 'storeRawContent'`. Removed the duplicate.
+- Added a timeout to c2patool runs (30 s default, injectable through C2PAVerifier and FolderVerifier). Previously a hung tool left `isAnalyzing` true forever and silently blocked every later check. The verifier now terminates on the deadline and escalates to SIGKILL. The escalation exists because on Linux `terminate()`'s SIGTERM was not delivered when the run happened inside a Swift detached task with Task.detached pipe drains: the child kept running, `waitUntilExit()` never returned, and the app stayed stuck. A direct `kill(pid, SIGKILL)` reaped it cleanly. On timeout the drain tasks are not awaited, because a grandchild holding the pipe could keep readToEnd blocked after the direct child died.
+- History corruption is now quarantined. A history.json that fails to decode is moved aside to history-corrupt-<timestamp>.json and the store starts fresh, so one bad byte cannot brick every add and delete. Test added.
+- Batch report UI: when c2patool is missing, the banner alone explains it; the per-file failure list would repeat the same cause for every file. Real failure lists are capped at 20 rows with a +N more line.
+- Drop zone verifies every dropped file in order instead of silently checking only the first (via a checked continuation bridging NSItemProvider).
+- Menu bar clipboard and file checks open the main window before the check runs, so the user sees the spinner instead of waiting in the dark.
+- History lists newest first; it previously appended oldest at the top.
+- Engine suite: 44 tests pass on Linux Swift 6.0.3 (3 new: hung-tool timeout, batch timeout as per-file failure, corrupt-history quarantine). App edits compile on macOS in CI on push.
+
 ### 2026-08-15: Bug hunt pass over the macOS app
 
 - Settings reactivity was broken by design. AppState settings were computed properties over UserDefaults on an @Observable class, and Observation only tracks stored state. Result: toggling "Anthropic detection API" never revealed the key field, and the preset caption went stale. Separately, storeRawContent (stored, observable) was never written back to UserDefaults, so the raw-content preference reset every launch. Fix: settings are now stored observable properties loaded in init, persisted by one @MainActor onChange hook in the app scene.
