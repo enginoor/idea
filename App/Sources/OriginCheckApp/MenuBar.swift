@@ -18,7 +18,9 @@ struct MenuBarContent: View {
         guard let text = NSPasteboard.general.string(forType: .string),
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else { return }
-        Task { await appState.analyzeText(text) }
+        Task { @MainActor in
+            await appState.analyzeText(text)
+        }
     }
 
     private func pickFile() {
@@ -26,6 +28,8 @@ struct MenuBarContent: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        Task { await appState.verifyFile(url) }
+        Task { @MainActor in
+            await appState.verifyFile(url)
+        }
     }
 }

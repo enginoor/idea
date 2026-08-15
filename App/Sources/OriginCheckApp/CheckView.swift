@@ -62,6 +62,7 @@ struct CheckView: View {
     }
 
     private func textInput(appState: AppState) -> some View {
+        @Bindable var appState = appState
         VStack(alignment: .leading, spacing: 8) {
             TextEditor(text: $appState.textInput)
                 .font(.body)
@@ -102,7 +103,9 @@ struct CheckView: View {
                     allowedContentTypes: [.png, .jpeg, .svg, .pdf, .webP, .mpeg4Movie, .quickTimeMovie, .data]
                 ) { result in
                     if case .success(let url) = result {
-                        Task { await appState.verifyFile(url) }
+                        Task { @MainActor in
+                            await appState.verifyFile(url)
+                        }
                     }
                 }
 
@@ -114,7 +117,9 @@ struct CheckView: View {
                     allowedContentTypes: [.folder]
                 ) { result in
                     if case .success(let url) = result {
-                        Task { await appState.verifyFolder(url) }
+                        Task { @MainActor in
+                            await appState.verifyFolder(url)
+                        }
                     }
                 }
             }
@@ -137,7 +142,7 @@ struct CheckView: View {
     }
 
     private func run() {
-        Task {
+        Task { @MainActor in
             if mode == .text {
                 await appState.analyzeText(appState.textInput)
             }
@@ -149,7 +154,9 @@ struct CheckView: View {
         _ = provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
             if let data = item as? Data,
                let url = URL(dataRepresentation: data, relativeTo: nil) {
-                Task { await appState.verifyFile(url) }
+                Task { @MainActor in
+                    await appState.verifyFile(url)
+                }
             }
         }
     }

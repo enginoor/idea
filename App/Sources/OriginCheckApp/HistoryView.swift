@@ -89,7 +89,7 @@ struct HistoryView: View {
     }
 
     private func deleteAll() {
-        Task {
+        Task { @MainActor in
             try? await appState.history.deleteAll()
             await reload()
         }
