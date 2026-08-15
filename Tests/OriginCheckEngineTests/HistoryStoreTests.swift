@@ -226,4 +226,77 @@ final class HistoryStoreTests: XCTestCase {
         let loaded = try await store.allRecords()
         XCTAssertTrue(loaded.isEmpty)
     }
+
+    func testBatchRecordSummarizesFolderScanAndRoundTrips() async throws {
+        let store = try makeStore()
+        let summary = BatchSummary(
+            totalFiles: 200,
+            supportedFiles: 150,
+            watermarked: 12,
+            noManifest: 130,
+            inconclusive: 5,
+            failed: 3,
+            unsupportedSkipped: 50
+        )
+        let report = BatchReport(
+            directoryName: "Photos",
+            scannedAt: Date(),
+            summary: summary,
+            verdicts: [],
+            failures: [],
+            toolMissing: false
+        )
+
+        let record = HistoryRecorder.record(forBatchReport: report, directoryPath: "/Users/test/Photos")
+        XCTAssertEqual(record.verdictKind, .batchScan)
+        XCTAssertEqual(record.inputType, "folder")
+        XCTAssertEqual(record.batchSummary, summary)
+        XCTAssertEqual(record.confidenceValue, 0, "A scan has counts, not a confidence percentage")
+        XCTAssertNil(record.rawText)
+        XCTAssertFalse(record.evidence.isEmpty)
+        XCTAssertEqual(record.inputHash, SHA256.hashString("/Users/test/Photos"))
+
+        // The record must survive a real store round trip, which exercises
+        // encoding of the new verdict kind and the batchSummary field.
+        try await store.add(record)
+        let loaded = try await store.allRecords()
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.verdictKind, .batchScan)
+        XCTAssertEqual(loaded.first?.batchSummary, summary)
+        XCTAssertEqual(loaded.first?.inputType, "folder")
+    }
+
+    func testBatchRecordMentionsMissingTool() {
+        let report = BatchReport(
+            directoryName: "Photos",
+            scannedAt: Date(),
+            summary: BatchSummary(totalFiles: 3, supportedFiles: 3, failed: 3),
+            verdicts: [],
+            failures: [],
+            toolMissing: true
+        )
+        let record = HistoryRecorder.record(forBatchReport: report, directoryPath: "/Users/test/Photos")
+        XCTAssertEqual(record.verdictKind, .batchScan)
+        XCTAssertTrue(record.evidence.contains { $0.kind == "tool_missing" })
+    }
+
+    func testHistoryRecordWithoutBatchSummaryStillDecodes() async throws {
+        // Records written by earlier app versions have no batchSummary key.
+        // The optional field must decode as nil; one old record must not
+        // break the whole history file.
+        let store = try makeStore()
+        let record = HistoryRecord(
+            inputType: "text",
+            inputHash: "abc123",
+            verdictKind: .watermarked,
+            confidenceValue: 0.9,
+            evidence: [EvidenceItem(source: "Test", kind: "fixture", summary: "A record.")]
+        )
+        try await store.add(record)
+
+        let loaded = try await store.allRecords()
+        XCTAssertEqual(loaded.count, 1)
+        XCTAssertEqual(loaded.first?.verdictKind, .watermarked)
+        XCTAssertNil(loaded.first?.batchSummary)
+    }
 }

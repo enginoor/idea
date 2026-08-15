@@ -13,6 +13,7 @@ extension VerdictKind {
         case .insufficientInput: "Not enough text"
         case .notAvailable: "Detection not available"
         case .inconclusive: "Inconclusive"
+        case .batchScan: "Folder scan"
         }
     }
 }
@@ -53,6 +54,12 @@ struct VerdictDisplay {
             title = "Inconclusive"
             detail = "The available signals do not resolve to a clear verdict."
             color = .yellow
+        case .batchScan:
+            // Only reachable if a text verdict is ever built with the batch
+            // kind; folder scans render through the batch report card.
+            title = "Folder scan"
+            detail = "A folder scan summary, not a single-file verdict."
+            color = .gray
         }
         return VerdictDisplay(
             title: title,

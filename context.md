@@ -6,6 +6,15 @@ Update this file after every prompt so it acts as memory.
 
 ## Session log
 
+### 2026-08-15: Folder scans write to history (roadmap item 4 closed)
+
+- Owner said continue. The release system from the previous session was verified end to end where the sandbox allows: all shell scripts pass bash -n, all Python scripts compile, and the feed pipeline (update-appcast.py insert, idempotent rerun, validate-feed.sh with version/build/repo checks) was exercised against a copy of the seed appcast.xml. It works; the feed is ready for the first real release.
+- Closed the last actionable roadmap item: folder scans were the only check type that never reached History, while the History empty state promised "every verdict you make is kept here". Batches have no single verdict kind, so the record is honest about that instead of forcing a percentage.
+- Engine: `VerdictKind.batchScan` added; `HistoryRecord` gained an optional `batchSummary` (synthesized Codable omits nil keys, so old history files still decode; regression test added). `HistoryRecorder.record(forBatchReport:directoryPath:)` stores the summary counts and a SHA-256 of the folder path, never the per-file list and never file contents; when the tool was missing, an evidence item says no file was actually verified.
+- App: `AppState.verifyFolder` writes the record with the same "report is shown, but could not be saved" failure path as text and file checks. `HistoryView` now reloads on `lastBatchReport` (the missing onChange was a latent staleness bug), renders "N watermarked · M failed" instead of a fabricated confidence percent for batch rows, and the record sheet shows the six-count grid plus a "Folder path hash" label. `VerdictDisplay` handles the new kind in both exhaustive switches.
+- README batch section updated to describe summary records instead of saying batches never touch history. agent.md updated (current state, roadmap, working notes).
+- Engine suite: 52 tests pass on Linux Swift 6.0.3 (3 new). Edited app files parse clean; the app compiles on macOS in CI on push. Committed and pushed to main.
+
 ### 2026-08-15: Production release and update system (DMG + Sparkle + GitHub Releases)
 
 - Owner asked for a production-grade release and automatic-update system modeled on bunnysayzz/sideterminal: DMG distribution, Sparkle updates, signed feeds, CI gates, GitHub Releases, version/build consistency, and release validation. Studied the reference repo: Sparkle as an SPM binary artifact copied into Contents/Frameworks by the packaging script, an rpath linker flag, sign_update for EdDSA signing, a committed appcast.xml updated by a script, and a release script that verifies CI before publishing.

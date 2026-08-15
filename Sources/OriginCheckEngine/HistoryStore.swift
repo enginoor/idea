@@ -110,4 +110,43 @@ public enum HistoryRecorder {
             fileThumbnailPath: storeRawContent ? fileURL?.path : nil
         )
     }
+
+    /// A folder scan is a record of counts, not a single verdict: the kind
+    /// is .batchScan and the summary is kept in the record. The per-file
+    /// verdict list is not stored (a rescan reproduces it), and no file
+    /// contents ever are. The hash identifies the scanned location so the
+    /// same folder can be found again; it is a path hash, not a content hash.
+    public static func record(
+        forBatchReport report: BatchReport,
+        directoryPath: String
+    ) -> HistoryRecord {
+        let summary = report.summary
+        var evidence: [EvidenceItem] = [
+            EvidenceItem(
+                source: "Folder scan",
+                kind: "scan",
+                summary: "Scanned \(report.directoryName): \(summary.totalFiles) files, "
+                    + "\(summary.supportedFiles) supported, \(summary.unsupportedSkipped) skipped."
+            ),
+            EvidenceItem(source: "Folder scan", kind: "count", summary: "Watermarked: \(summary.watermarked)"),
+            EvidenceItem(source: "Folder scan", kind: "count", summary: "No manifest: \(summary.noManifest)"),
+            EvidenceItem(source: "Folder scan", kind: "count", summary: "Inconclusive: \(summary.inconclusive)"),
+            EvidenceItem(source: "Folder scan", kind: "count", summary: "Failed: \(summary.failed)"),
+        ]
+        if report.toolMissing {
+            evidence.append(EvidenceItem(
+                source: "Folder scan",
+                kind: "tool_missing",
+                summary: "c2patool could not be launched; no file was actually verified."
+            ))
+        }
+        return HistoryRecord(
+            inputType: "folder",
+            inputHash: SHA256.hashString(directoryPath),
+            verdictKind: .batchScan,
+            confidenceValue: 0,
+            evidence: evidence,
+            batchSummary: summary
+        )
+    }
 }

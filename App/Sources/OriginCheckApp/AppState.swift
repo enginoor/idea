@@ -157,6 +157,16 @@ final class AppState {
             lastTextVerdict = nil
             lastFileVerdict = nil
             statusMessage = nil
+            // A folder scan is a record of counts, not a single verdict, so
+            // it is stored with kind .batchScan. Building the record only
+            // hashes the path string, so it is cheap enough for the main
+            // actor; no file contents are read.
+            let record = HistoryRecorder.record(forBatchReport: report, directoryPath: url.path)
+            do {
+                try await history.add(record)
+            } catch {
+                statusMessage = "The report is shown, but it could not be saved to history: \(error.localizedDescription)"
+            }
             return true
         } catch {
             statusMessage = "Folder scan failed: \(error.localizedDescription)"

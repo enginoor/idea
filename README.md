@@ -103,7 +103,7 @@ let report = try await verifier.verifyDirectory(at: folderURL)
 print(report.summary.watermarked, report.summary.noManifest, report.summary.failed)
 ```
 
-The report card holds factual counts, one verdict per file, and a list of failures. One broken file never stops the scan. Hidden files and unsupported extensions are skipped, and `toolMissing` reports honestly when c2patool cannot be launched. Batches are not written to history because a folder has no single verdict kind.
+The report card holds factual counts, one verdict per file, and a list of failures. One broken file never stops the scan. Hidden files and unsupported extensions are skipped, and `toolMissing` reports honestly when c2patool cannot be launched. Each scan is written to history as a summary record (kind `.batchScan`): the counts and the scanned location, never the per-file list or any file contents. A folder has no single verdict kind, so the record reports counts, not a confidence percentage.
 
 To try the engine against realistic manifests without installing c2patool, point it at the mock tool:
 

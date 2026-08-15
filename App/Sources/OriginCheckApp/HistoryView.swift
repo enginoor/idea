@@ -49,10 +49,19 @@ struct HistoryView: View {
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(record.confidenceValue.formatted(.percent.precision(.fractionLength(0))))
-                            .font(.subheadline)
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
+                        if let summary = record.batchSummary {
+                            // A folder scan has counts, not a confidence
+                            // percentage; percent would be a made-up number.
+                            Text("\(summary.watermarked) watermarked · \(summary.failed) failed")
+                                .font(.subheadline)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text(record.confidenceValue.formatted(.percent.precision(.fractionLength(0))))
+                                .font(.subheadline)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .contentShape(Rectangle())
                     .onTapGesture { selected = record }
@@ -67,6 +76,11 @@ struct HistoryView: View {
             Task { @MainActor in await reload() }
         }
         .onChange(of: appState.lastFileVerdict) {
+            Task { @MainActor in await reload() }
+        }
+        .onChange(of: appState.lastBatchReport) {
+            // Folder scans write a history record too; without this the list
+            // would stay stale until the next text or file check.
             Task { @MainActor in await reload() }
         }
         .sheet(item: $selected) { record in
@@ -136,14 +150,36 @@ struct RecordDetailView: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 8) {
-                    Text("\(record.confidenceValue.formatted(.percent.precision(.fractionLength(0)))) confidence")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    if let summary = record.batchSummary {
+                        Text("\(summary.watermarked) watermarked · \(summary.failed) failed")
+                            .font(.subheadline)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("\(record.confidenceValue.formatted(.percent.precision(.fractionLength(0)))) confidence")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                     Button("Done") { dismiss() }
                 }
             }
 
-            Text("Input hash: \(record.inputHash)")
+            if let summary = record.batchSummary {
+                // The same factual counts as the report card, so the record
+                // reads as a scan without pretending to be a single verdict.
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
+                    countItem("Watermarked", summary.watermarked)
+                    countItem("No manifest", summary.noManifest)
+                    countItem("Inconclusive", summary.inconclusive)
+                    countItem("Failed", summary.failed)
+                    countItem("Skipped", summary.unsupportedSkipped)
+                    countItem("Files", summary.totalFiles)
+                }
+            }
+
+            Text(record.batchSummary == nil
+                ? "Input hash: \(record.inputHash)"
+                : "Folder path hash: \(record.inputHash)")
                 .font(.caption)
                 .monospaced()
                 .foregroundStyle(.secondary)
@@ -176,5 +212,20 @@ struct RecordDetailView: View {
         }
         .padding(24)
         .frame(width: 560, height: 480)
+    }
+
+    private func countItem(_ label: String, _ value: Int) -> some View {
+        VStack(spacing: 2) {
+            Text(value.formatted())
+                .font(.headline)
+                .monospacedDigit()
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 6)
+        .background(Color(nsColor: .controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 }

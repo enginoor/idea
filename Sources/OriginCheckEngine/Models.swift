@@ -13,6 +13,9 @@ public enum VerdictKind: String, Codable, Sendable {
     case notAvailable
     /// Signals conflict or the evidence is weak (unknown signer, bad signature).
     case inconclusive
+    /// A folder scan summary. A batch has no single verdict on one piece of
+    /// content; the counts live in the record's batchSummary field.
+    case batchScan
 }
 
 public enum ConfidenceLabel: String, Codable, Sendable {
@@ -152,6 +155,10 @@ public struct HistoryRecord: Codable, Identifiable, Sendable, Equatable {
     public var evidence: [EvidenceItem]
     public var rawText: String?
     public var fileThumbnailPath: String?
+    /// Present only on folder scan records. The summary counts are the
+    /// record; the per-file list is deliberately not stored, because a
+    /// rescan reproduces it and history would otherwise balloon.
+    public var batchSummary: BatchSummary?
 
     public init(
         id: UUID = UUID(),
@@ -162,7 +169,8 @@ public struct HistoryRecord: Codable, Identifiable, Sendable, Equatable {
         confidenceValue: Double,
         evidence: [EvidenceItem],
         rawText: String? = nil,
-        fileThumbnailPath: String? = nil
+        fileThumbnailPath: String? = nil,
+        batchSummary: BatchSummary? = nil
     ) {
         self.id = id
         self.date = date
@@ -173,6 +181,7 @@ public struct HistoryRecord: Codable, Identifiable, Sendable, Equatable {
         self.evidence = evidence
         self.rawText = rawText
         self.fileThumbnailPath = fileThumbnailPath
+        self.batchSummary = batchSummary
     }
 }
 
