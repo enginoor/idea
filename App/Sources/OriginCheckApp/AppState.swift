@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import OriginCheckEngine
 
+@MainActor
 @Observable
 final class AppState {
     let engine: OriginCheckEngine

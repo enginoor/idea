@@ -14,6 +14,7 @@ struct MenuBarContent: View {
         Button("Quit OriginCheck") { NSApplication.shared.terminate(nil) }
     }
 
+    @MainActor
     private func checkClipboard() {
         guard let text = NSPasteboard.general.string(forType: .string),
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -23,6 +24,7 @@ struct MenuBarContent: View {
         }
     }
 
+    @MainActor
     private func pickFile() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = false

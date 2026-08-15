@@ -63,7 +63,7 @@ struct CheckView: View {
 
     private func textInput(appState: AppState) -> some View {
         @Bindable var appState = appState
-        VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: 8) {
             TextEditor(text: $appState.textInput)
                 .font(.body)
                 .frame(minHeight: 180)
