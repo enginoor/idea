@@ -1,0 +1,76 @@
+name: Verify Sparkle key
+
+# Diagnostic, run manually from the Actions tab. Proves that the
+# SPARKLE_PRIVATE_KEY secret:
+#   1. is set,
+#   2. parses as an Ed25519 private key,
+#   3. derives to exactly the public key committed in Sparkle/public-key.txt,
+#   4. is accepted by Sparkle's own sign_update.
+#
+# It never prints the private key. A red run means the secret is wrong:
+# re-paste the contents of Sparkle/private-key.pem (or the rotated key)
+# and rerun. Never needed during normal releases; release.yml runs the same
+# checks as part of every release anyway.
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Verify key pairing
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # The macos-14 image ships Swift 5.10, which cannot resolve this
+      # Swift 6.0 package, so install the same 6.0.3 toolchain the rest of
+      # the pipeline uses.
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0.3"
+
+      - name: Fetch Sparkle's sign_update
+        run: cd App && swift package resolve
+
+      # macOS ships LibreSSL, which cannot derive an Ed25519 public key
+      # from a private PEM. A real OpenSSL 3 handles it.
+      - name: Install OpenSSL 3
+        run: brew install openssl@3
+
+      - name: Check the secret against the committed public key
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${SPARKLE_PRIVATE_KEY}" ]]; then
+            echo "error: SPARKLE_PRIVATE_KEY is not set." >&2
+            exit 1
+          fi
+          umask 077
+          printf '%s\n' "${SPARKLE_PRIVATE_KEY}" > "${RUNNER_TEMP}/sparkle-private-key.pem"
+          trap 'rm -f "${RUNNER_TEMP}/sparkle-private-key.pem"' EXIT
+
+          OPENSSL="$(brew --prefix openssl@3)/bin/openssl"
+          EXPECTED="$(tr -d '[:space:]' < Sparkle/public-key.txt)"
+          DERIVED="$("${OPENSSL}" pkey -in "${RUNNER_TEMP}/sparkle-private-key.pem" -pubout -outform DER 2>/dev/null | tail -c 32 | base64 | tr -d '\n')"
+          if [[ -z "${DERIVED}" ]]; then
+            echo "error: the secret is not a parseable Ed25519 private key." >&2
+            exit 1
+          fi
+          if [[ "${DERIVED}" != "${EXPECTED}" ]]; then
+            echo "error: the secret derives to a DIFFERENT public key than the committed one." >&2
+            echo "  committed: ${EXPECTED}" >&2
+            echo "  derived:   ${DERIVED}" >&2
+            echo "  Paste the contents of Sparkle/private-key.pem, not the public key file." >&2
+            exit 1
+          fi
+          echo "The secret derives to the committed public key."
+
+          SIGN_UPDATE="$(find App/.build/artifacts -iname sign_update -path '*bin*' 2>/dev/null | head -1)"
+          [[ -n "${SIGN_UPDATE}" ]] || { echo "error: sign_update not found" >&2; exit 1; }
+          printf 'dummy archive for sparkle key verification' > "${RUNNER_TEMP}/verify.bin"
+          OUTPUT="$("${SIGN_UPDATE}" -f "${RUNNER_TEMP}/sparkle-private-key.pem" "${RUNNER_TEMP}/verify.bin")"
+          echo "${OUTPUT}"
+          echo "${OUTPUT}" | grep -q 'sparkle:edSignature=' \
+            || { echo "error: sign_update accepted the key but produced no signature." >&2; exit 1; }
+          echo "OK: the secret signs with Sparkle and matches the committed public key."
