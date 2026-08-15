@@ -2,6 +2,11 @@
 # Generates (or reads) the Sparkle EdDSA signing keypair for OriginCheck
 # updates. Run once, on a Mac. Sparkle's tools are macOS binaries.
 #
+# No Mac handy? Scripts/generate-sparkle-keys-linux.sh does the same job
+# with openssl 3.x: same key type (Ed25519), same private-key format, same
+# public-key string. It writes the private key to Sparkle/private-key.pem
+# instead of the Keychain.
+#
 # What it does:
 #   1. Runs Sparkle's generate_keys. The PRIVATE key is saved to your login
 #      Keychain; it is never written into this repository.

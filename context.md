@@ -6,6 +6,15 @@ Update this file after every prompt so it acts as memory.
 
 ## Session log
 
+### 2026-08-15: Sparkle key generated without a Mac, owner-only step isolated
+
+- Owner asked for an alternative to the Mac key setup. The key is standard Ed25519, so the Mac requirement was only Sparkle's generate_keys binary. Generated the pair with openssl 3.0.2: PKCS#8 PEM private key, public key = base64 of the raw 32-byte ed25519 key (44 chars), which is exactly Sparkle's SUPublicEDKey and sign_update -f formats. Verified the pair with a sign/verify roundtrip before using it.
+- Committed the real public key to Sparkle/public-key.txt (44 chars, placeholder gone; release.sh and package-app.sh placeholder checks now pass).
+- Copied the private key to Sparkle/private-key.pem (gitignored, chmod 600) so the owner can paste it into the GitHub Actions secret without the key ever appearing in chat.
+- Attempted `gh secret set SPARKLE_PRIVATE_KEY`; Freebuff's GitHub App token is denied with 403 (Resource not accessible by integration). Setting an Actions secret needs admin, which the App token does not have. This is the single step that cannot be automated from this workspace. Documented in RELEASING.md and in the script itself.
+- Added Scripts/generate-sparkle-keys-linux.sh so the Linux path is reproducible and safe: refuses to run if Sparkle/private-key.pem exists (protects the key already in the secret), regenerates only on deliberate rotation, self-verifies the keypair, prints the public key and the remaining steps, and never prints the private key. generate-sparkle-keys.sh header points at it.
+- After the owner pastes the secret, `bash Scripts/release.sh v0.2.0` is the whole release flow; nothing else is outstanding.
+
 ### 2026-08-15: Folder scans write to history (roadmap item 4 closed)
 
 - Owner said continue. The release system from the previous session was verified end to end where the sandbox allows: all shell scripts pass bash -n, all Python scripts compile, and the feed pipeline (update-appcast.py insert, idempotent rerun, validate-feed.sh with version/build/repo checks) was exercised against a copy of the seed appcast.xml. It works; the feed is ready for the first real release.

@@ -151,6 +151,13 @@ login Keychain), writes `Sparkle/public-key.txt`, and prints the steps to:
 2. Move the key to another Mac with `generate_keys -x` / `generate_keys -f`
    if you want to sign from a local release.
 
+No Mac handy? The key is plain Ed25519. `Scripts/generate-sparkle-keys-linux.sh`
+replaces step 1 with openssl 3.x: it writes the private key to
+`Sparkle/private-key.pem` (gitignored) and prints the public key plus the
+same remaining steps. The private key must still end up in the
+`SPARKLE_PRIVATE_KEY` secret, and that step needs admin access to the
+repository (a GitHub App token cannot set it).
+
 The release pipeline refuses to run while `Sparkle/public-key.txt` is the
 placeholder. Never commit the private key. The `.gitignore` blocks
 `Sparkle/*.pem` and export files.
