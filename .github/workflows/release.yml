@@ -1,0 +1,82 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without the v prefix"
+        required: true
+        default: "0.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Engine tests (gate)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: swift-actions/setup-swift@v2
+        with:
+          swift-version: "6.0.3"
+      - name: Run the engine test suite
+        run: swift test
+
+  release:
+    name: Build and publish the macOS release
+    needs: test
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version and artifact name
+        id: names
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "artifact=OriginCheck-${VERSION}-macOS.zip" >> "${GITHUB_OUTPUT}"
+
+      - name: Build the app in release mode
+        run: cd App && swift build -c release
+
+      - name: Package the app bundle
+        id: package
+        env:
+          VERSION: ${{ steps.names.outputs.version }}
+        run: |
+          bash Scripts/package-app.sh "${VERSION}" "${PWD}"
+          CHECKSUM="$(shasum -a 256 "OriginCheck-${VERSION}-macOS.zip" | awk '{print $1}')"
+          echo "checksum=${CHECKSUM}" >> "${GITHUB_OUTPUT}"
+          echo "SHA-256: ${CHECKSUM}"
+
+      - name: Write structured release notes
+        env:
+          VERSION: ${{ steps.names.outputs.version }}
+          CHECKSUM: ${{ steps.package.outputs.checksum }}
+        run: bash Scripts/release-notes.sh "${VERSION}" "${CHECKSUM}" > "${RUNNER_TEMP}/release-notes.md"
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.names.outputs.version }}
+          ARTIFACT: ${{ steps.names.outputs.artifact }}
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            TAG="v${VERSION}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          gh release create "${TAG}" "${ARTIFACT}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "OriginCheck ${VERSION}" \
+            --notes-file "${RUNNER_TEMP}/release-notes.md"

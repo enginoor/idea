@@ -70,12 +70,12 @@ Built 2026-08-15, third session with code. The first session's web app was remov
 - The text detection API does not exist yet. The honest unavailable state is the product until Anthropic ships it.
 - File verification depends on c2patool being installed. Ship instructions and consider vendoring it.
 - History is JSON, not SQLite. Acceptable for the MVP; swap to GRDB or SwiftData when volume demands it.
-- The app target is not yet compiled on macOS, signed, sandboxed, or notarized. That is the owner's machine-side work, or a future session on a Mac.
+- The app target is compiled on macOS by GitHub Actions CI on every push, and by the release workflow in release mode. The development sandbox is Linux, so CI is the real compile gate. The app is ad-hoc signed by the packaging script but not yet sandboxed or notarized; both need a developer certificate or the owner's Mac.
 - The manifest parser uses heuristic mapping for signature validity and modification state. It is tested against the fixtures and documented; real-world c2patool output should be fed back into the fixture library as it appears.
 
 ## Roadmap, in priority order
 
-1. Build the app on a Mac, fix whatever Xcode surfaces, sandbox and notarize. The batch report card UI lands here too, once a Mac is available.
+1. Build the app on a Mac, fix whatever Xcode surfaces, sandbox and notarize. GitHub Actions now builds the app on macOS runners on every push, so Xcode surface errors show up in CI instead of on the owner's machine. Sandbox and notarize remain open.
 2. Real Anthropic detection API integration the moment it ships, behind the existing provider interface.
 3. Expand file formats: done at the engine level (full c2patool list). The app surfaces webp, pdf, mp4, and mov; the remaining formats can be added to the file importer when the app is built on a Mac.
 4. Batch folder verification: engine done and tested. Remaining work is Mac-side only: build the report card UI and decide whether batches write to history (currently they do not; a batch has no single verdict kind).
@@ -85,6 +85,7 @@ Built 2026-08-15, third session with code. The first session's web app was remov
 ## Working notes for future sessions
 
 - Engine tests: `swift test` (works on Linux and macOS). The sandbox has Swift at /opt/swift/usr/bin; add it to PATH if it is not there.
+- CI/CD: workflows live in `.github/workflows/`. `ci.yml` tests on every push; `release.yml` builds and publishes on `v*` tags and via workflow_dispatch. Packaging and notes are `Scripts/package-app.sh` and `Scripts/release-notes.sh`. Releases are ad-hoc signed, not notarized.
 - The platform's web checks do not apply to this repo anymore. The engine test suite is the verification gate.
 - Keep copy in the tone above. Re-read any sentence that uses an em dash or a banned word.
 - Standing rule: every change is committed and pushed to GitHub at the end of the turn. context.md logs each session.
