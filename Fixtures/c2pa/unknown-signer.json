@@ -1,0 +1,38 @@
+{
+  "active_manifest": "urn:uuid:33333333-3333-3333-3333-333333333333",
+  "manifests": {
+    "urn:uuid:33333333-3333-3333-3333-333333333333": {
+      "claim_generator": "c2pa/0.10.0",
+      "claim_generator_info": [
+        {
+          "name": "MysteryTool",
+          "version": "0.1.0"
+        }
+      ],
+      "signature_info": {
+        "issuer": "C=US, O=Unknown Corp"
+      },
+      "assertions": [
+        {
+          "label": "c2pa.actions",
+          "data": {
+            "actions": [
+              {
+                "action": "c2pa.created",
+                "when": "2026-08-02T10:00:00Z",
+                "softwareAgent": "MysteryTool"
+              }
+            ]
+          }
+        }
+      ],
+      "validation_status": [
+        {
+          "code": "claimSignature.valid",
+          "status": "valid",
+          "explanation": "Claim signature is valid"
+        }
+      ]
+    }
+  }
+}

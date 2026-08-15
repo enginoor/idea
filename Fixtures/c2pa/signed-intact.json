@@ -1,0 +1,44 @@
+{
+  "active_manifest": "urn:uuid:11111111-1111-1111-1111-111111111111",
+  "manifests": {
+    "urn:uuid:11111111-1111-1111-1111-111111111111": {
+      "claim_generator": "c2pa/0.12.0",
+      "claim_generator_info": [
+        {
+          "name": "Claude",
+          "version": "1.0.0"
+        }
+      ],
+      "signature_info": {
+        "issuer": "C=US, O=Anthropic, CN=Claude Signing"
+      },
+      "assertions": [
+        {
+          "label": "c2pa.actions",
+          "data": {
+            "actions": [
+              {
+                "action": "c2pa.created",
+                "when": "2026-08-02T10:00:00Z",
+                "softwareAgent": "Claude",
+                "softwareAgentVersion": "1.0.0"
+              }
+            ]
+          }
+        }
+      ],
+      "validation_status": [
+        {
+          "code": "claimSignature.valid",
+          "status": "valid",
+          "explanation": "Claim signature is valid"
+        },
+        {
+          "code": "assertion.dataHash.valid",
+          "status": "valid",
+          "explanation": "Data hash matches the signed value"
+        }
+      ]
+    }
+  }
+}

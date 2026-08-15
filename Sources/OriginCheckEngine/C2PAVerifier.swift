@@ -1,0 +1,373 @@
+import Foundation
+
+/// Verifies C2PA manifests in media files by running the reference
+/// `c2patool` command line tool and parsing its JSON output.
+///
+/// The tool path is injectable so tests can use a stub. The parser is
+/// deliberately lenient: anything it cannot parse is reported as no manifest,
+/// never as a verdict on authorship.
+public struct C2PAVerifier: Sendable {
+    public let toolPath: String
+
+    public init(toolPath: String = "c2patool") {
+        self.toolPath = toolPath
+    }
+
+    public enum VerificationError: Error, Sendable {
+        case fileUnreadable(String)
+        case toolUnavailable(String)
+    }
+
+    public func verifyFile(at url: URL) async throws -> FileVerdict {
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            throw VerificationError.fileUnreadable(url.path)
+        }
+
+        let output = try runTool(arguments: [url.path])
+        let fileName = url.lastPathComponent
+        let format = url.pathExtension.lowercased()
+
+        guard
+            let data = output.stdout.data(using: .utf8),
+            let envelope = try? JSONDecoder().decode(ManifestEnvelope.self, from: data),
+            let manifest = envelope.activeManifestEntry ?? envelope.manifests?.values.first
+        else {
+            return noManifestVerdict(
+                fileName: fileName,
+                format: format,
+                toolOutput: output
+            )
+        }
+
+        return verdict(
+            for: url,
+            envelope: envelope,
+            manifest: manifest,
+            fileName: fileName,
+            format: format,
+            toolOutput: output
+        )
+    }
+
+    // MARK: - Tool execution
+
+    private func runTool(arguments: [String]) throws -> ToolOutput {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: toolPath)
+        process.arguments = arguments
+
+        let outPipe = Pipe()
+        let errPipe = Pipe()
+        process.standardOutput = outPipe
+        process.standardError = errPipe
+
+        do {
+            try process.run()
+        } catch {
+            throw VerificationError.toolUnavailable(
+                "Could not launch \(toolPath): \(error.localizedDescription). "
+                    + "Install c2patool (cargo install c2patool) or check the tool path."
+            )
+        }
+
+        process.waitUntilExit()
+        let outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+        let errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+
+        return ToolOutput(
+            stdout: String(data: outData, encoding: .utf8) ?? "",
+            stderr: String(data: errData, encoding: .utf8) ?? "",
+            exitCode: process.terminationStatus
+        )
+    }
+
+    private struct ToolOutput {
+        var stdout: String
+        var stderr: String
+        var exitCode: Int32
+    }
+
+    // MARK: - Manifest mapping
+
+    private func verdict(
+        for url: URL,
+        envelope: ManifestEnvelope,
+        manifest: ManifestEntry,
+        fileName: String,
+        format: String,
+        toolOutput: ToolOutput
+    ) -> FileVerdict {
+        var evidence: [EvidenceItem] = [
+            EvidenceItem(
+                source: "C2PA",
+                kind: "tool_run",
+                summary: "Verified with \(toolPath).",
+                detail: "Exit code \(toolOutput.exitCode)."
+            ),
+            EvidenceItem(
+                source: "C2PA",
+                kind: "manifest_present",
+                summary: "A C2PA manifest was found in the file.",
+                detail: "Active manifest: \(envelope.active_manifest ?? "unknown")"
+            ),
+        ]
+
+        let signer = displayName(from: manifest.signature_info?.issuer)
+        let softwareAgent = softwareAgentName(from: manifest)
+        let signatureValid = signatureState(manifest.validation_status)
+        let modified = modificationState(manifest.validation_status, signatureValid: signatureValid)
+        let claims = claims(from: manifest, signer: signer)
+
+        if let signer {
+            evidence.append(EvidenceItem(source: "C2PA", kind: "signer", summary: "Signing entity: \(signer)."))
+        }
+        if let softwareAgent {
+            evidence.append(EvidenceItem(source: "C2PA", kind: "software_agent", summary: "Processing tool: \(softwareAgent)."))
+        }
+        if let signatureValid {
+            evidence.append(EvidenceItem(
+                source: "C2PA",
+                kind: "signature_validity",
+                summary: signatureValid ? "Signature is valid." : "Signature is invalid or expired.",
+                detail: manifest.validation_status?.map { $0.code ?? "" }.joined(separator: ", ") ?? ""
+            ))
+        } else {
+            evidence.append(EvidenceItem(
+                source: "C2PA",
+                kind: "signature_unverifiable",
+                summary: "No validation status was reported for the signature.",
+                detail: "The manifest exists but its signature could not be verified with the available output."
+            ))
+        }
+        if let modified {
+            evidence.append(EvidenceItem(
+                source: "C2PA",
+                kind: "asset_hash",
+                summary: modified ? "The file was modified after signing." : "The file matches the signed content."
+            ))
+        }
+
+        let unknownSigner = signer == nil || signer!.localizedCaseInsensitiveContains("unknown")
+
+        let kind: VerdictKind
+        let confidence: Confidence
+        switch signatureValid {
+        case .some(true):
+            kind = .watermarked
+            if modified == true {
+                confidence = ConfidenceRules.confidence(ConfidenceRules.validSignatureModified)
+            } else {
+                confidence = ConfidenceRules.confidence(
+                    unknownSigner
+                        ? ConfidenceRules.validSignatureUnknownSigner
+                        : ConfidenceRules.validSignatureKnownSigner
+                )
+            }
+        case .some(false):
+            kind = .inconclusive
+            confidence = ConfidenceRules.confidence(ConfidenceRules.invalidSignature)
+        case nil:
+            kind = .inconclusive
+            confidence = ConfidenceRules.confidence(ConfidenceRules.unverifiableSignature)
+        }
+
+        let caveat: String
+        if signatureValid == true && modified == true {
+            caveat = Caveats.fileModified(tool: softwareAgent)
+        } else if signatureValid == true {
+            caveat = Caveats.fileValid(signer: signer, tool: softwareAgent)
+        } else {
+            caveat = Caveats.general
+        }
+
+        return FileVerdict(
+            kind: kind,
+            confidence: confidence,
+            fileName: fileName,
+            format: format,
+            manifestPresent: true,
+            signatureValid: signatureValid,
+            modifiedSinceSigning: modified,
+            signer: signer,
+            softwareAgent: softwareAgent,
+            claims: claims,
+            evidence: evidence,
+            caveatText: caveat
+        )
+    }
+
+    private func noManifestVerdict(
+        fileName: String,
+        format: String,
+        toolOutput: ToolOutput
+    ) -> FileVerdict {
+        let evidence: [EvidenceItem] = [
+            EvidenceItem(
+                source: "C2PA",
+                kind: "tool_run",
+                summary: "Verified with \(toolPath).",
+                detail: "Exit code \(toolOutput.exitCode)."
+            ),
+            EvidenceItem(
+                source: "C2PA",
+                kind: "manifest_absent",
+                summary: "No C2PA manifest was found in the file.",
+                detail: toolOutput.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            ),
+        ]
+        return FileVerdict(
+            kind: .notWatermarked,
+            confidence: ConfidenceRules.confidence(ConfidenceRules.noManifest),
+            fileName: fileName,
+            format: format,
+            manifestPresent: false,
+            signatureValid: nil,
+            modifiedSinceSigning: nil,
+            signer: nil,
+            softwareAgent: nil,
+            claims: [],
+            evidence: evidence,
+            caveatText: Caveats.fileNoManifest
+        )
+    }
+
+    // MARK: - Parsing helpers
+
+    private func signatureState(_ statuses: [ValidationStatus]?) -> Bool? {
+        guard let statuses, !statuses.isEmpty else { return nil }
+        let signatureCodes = statuses.filter { status in
+            let code = (status.code ?? "").lowercased()
+            return code.contains("signature") || code.contains("certificate")
+        }
+        guard !signatureCodes.isEmpty else { return nil }
+        for status in signatureCodes {
+            if isInvalid(status) { return false }
+        }
+        for status in signatureCodes {
+            let code = (status.code ?? "").lowercased()
+            let rawStatus = (status.status ?? "").lowercased()
+            if rawStatus == "valid" || code.contains(".valid") { return true }
+        }
+        return nil
+    }
+
+    private func modificationState(_ statuses: [ValidationStatus]?, signatureValid: Bool?) -> Bool? {
+        guard let statuses else { return nil }
+        for status in statuses {
+            let code = (status.code ?? "").lowercased()
+            if code.contains("mismatch") { return true }
+            if code.contains("hash") && isInvalid(status) { return true }
+        }
+        return signatureValid == true ? false : nil
+    }
+
+    private func isInvalid(_ status: ValidationStatus) -> Bool {
+        let code = (status.code ?? "").lowercased()
+        let rawStatus = (status.status ?? "").lowercased()
+        return rawStatus == "invalid"
+            || code.contains("invalid")
+            || code.contains("expired")
+            || code.contains("revoked")
+    }
+
+    private func softwareAgentName(from manifest: ManifestEntry) -> String? {
+        if let name = manifest.claim_generator_info?.first?.name, !name.isEmpty {
+            return name
+        }
+        if let generator = manifest.claim_generator, !generator.isEmpty {
+            return generator
+        }
+        return manifest.assertions?
+            .first { $0.label == "c2pa.actions" }?
+            .data?.actions?
+            .first?.softwareAgent
+    }
+
+    private func claims(from manifest: ManifestEntry, signer: String?) -> [C2PAClaim] {
+        let actions = manifest.assertions?
+            .filter { $0.label == "c2pa.actions" }
+            .compactMap { $0.data?.actions }
+            .flatMap { $0 } ?? []
+        return actions.map { action in
+            C2PAClaim(
+                title: action.action ?? "unknown action",
+                action: action.action ?? "",
+                softwareAgent: action.softwareAgent,
+                signer: signer,
+                timestamp: parseDate(action.when)
+            )
+        }
+    }
+
+    private func displayName(from issuer: String?) -> String? {
+        guard let issuer, !issuer.isEmpty else { return nil }
+        let parts = issuer.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        var fields: [String: String] = [:]
+        for part in parts {
+            let pair = part.split(separator: "=", maxSplits: 1).map { String($0) }
+            if pair.count == 2 {
+                fields[pair[0].trimmingCharacters(in: .whitespaces)] =
+                    pair[1].trimmingCharacters(in: .whitespaces)
+            }
+        }
+        if let commonName = fields["CN"] { return commonName }
+        if let organization = fields["O"] { return organization }
+        return issuer
+    }
+
+    private func parseDate(_ string: String?) -> Date? {
+        guard let string, !string.isEmpty else { return nil }
+        return ISO8601DateFormatter().date(from: string)
+    }
+}
+
+// MARK: - Manifest JSON shapes
+
+private struct ManifestEnvelope: Decodable {
+    var active_manifest: String?
+    var manifests: [String: ManifestEntry]?
+
+    var activeManifestEntry: ManifestEntry? {
+        guard let active = active_manifest, let manifests else { return nil }
+        return manifests[active]
+    }
+}
+
+private struct ManifestEntry: Decodable {
+    var claim_generator: String?
+    var claim_generator_info: [GeneratorInfo]?
+    var signature_info: SignatureInfo?
+    var assertions: [Assertion]?
+    var validation_status: [ValidationStatus]?
+}
+
+private struct GeneratorInfo: Decodable {
+    var name: String?
+    var version: String?
+}
+
+private struct SignatureInfo: Decodable {
+    var issuer: String?
+}
+
+private struct Assertion: Decodable {
+    var label: String?
+    var data: AssertionData?
+}
+
+private struct AssertionData: Decodable {
+    var actions: [Action]?
+}
+
+private struct Action: Decodable {
+    var action: String?
+    var when: String?
+    var softwareAgent: String?
+    var softwareAgentVersion: String?
+}
+
+private struct ValidationStatus: Decodable {
+    var code: String?
+    var status: String?
+    var explanation: String?
+}

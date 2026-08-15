@@ -1,0 +1,22 @@
+#!/bin/bash
+# Mock c2patool for OriginCheck demos and manual testing.
+# Picks a fixture payload based on the input file name, so you can point the
+# engine at any dummy file and see a representative verdict.
+#
+# Usage: c2patool <path-to-any-file>
+#   *intact*    -> Claude-signed manifest, valid, unmodified
+#   *modified*  -> Claude-signed manifest, valid signature, asset changed
+#   *unknown*   -> manifest signed by an unknown entity
+#   *expired*   -> manifest with an expired signing certificate
+#   anything else -> "No C2PA manifest found"
+
+DIR="$(cd "$(dirname "$0")/../c2pa" && pwd)"
+NAME="$(basename "$1")"
+
+case "$NAME" in
+  *intact*)  cat "$DIR/signed-intact.json" ;;
+  *modified*) cat "$DIR/signed-modified.json" ;;
+  *unknown*) cat "$DIR/unknown-signer.json" ;;
+  *expired*) cat "$DIR/expired-cert.json" ;;
+  *) echo "No C2PA manifest found." >&2; exit 1 ;;
+esac

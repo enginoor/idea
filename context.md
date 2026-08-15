@@ -6,26 +6,20 @@ Update this file after every prompt so it acts as memory.
 
 ## Session log
 
-### 2026-08-15 — Standing rule: sync after every prompt
-- User asked that every change made in a session be committed and pushed to GitHub after every prompt. From now on, when a turn produces changes, commit them to main and push before the turn ends. Stage only the files that belong to that turn. Do not wait to be asked.
+### 2026-08-15: Pivot to OriginCheck, engine built and tested
 
-### 2026-08-15 — First build (agent.md, full app)
+- Owner said the web app was not the product and supplied the OriginCheck spec: a native macOS app that detects Claude content provenance through text watermark analysis and C2PA metadata verification. Old web app removed; agent.md and context.md kept and updated.
+- The sandbox is Linux, so a macOS SwiftUI app cannot compile here. Installed Swift 6.0.3 on the sandbox and built the engine as a Swift package instead, which compiles and tests on Linux.
+- Built OriginCheckEngine: data model, C2PAVerifier (shells out to c2patool, lenient manifest parsing), text watermark providers (local analyzer and Anthropic API provider, both honest unavailable states), verdict combiner with unknowns-reduce-confidence rules, JSON history store with hash-only defaults, dependency-free SHA-256.
+- Wrote the macOS SwiftUI app package (Check, History, Settings, menu bar extra, Keychain key store). It is code-complete but must be built on a Mac.
+- Fixtures: Claude-signed intact, modified after signing, unknown signer, expired certificate, plus a mock c2patool.
+- Verification: 27 engine tests pass on Linux Swift 6.0.3. Found and fixed a SHA-256 byte masking bug during testing.
+- Repo layout: Package.swift + Sources/ + Tests/ at root, App/ for the macOS app, Fixtures/ for test data.
 
-- User asked for an agent.md thinking document, real research before building, and a humanized, modern product. Rules: no em dashes, no decorative icons, no emojis anywhere.
-- Researched the idea-management market (capture, develop, decide path vs collection boxes) and 2026 design trends. The thesis is written into agent.md.
-- The repo was still empty (only context.md), so the full app was scaffolded from zero.
-- Built idea: a quiet personal workspace for the second half of an idea.
-  - Landing page at /: thesis hero, the box problem, the path, what the app refuses to be, privacy, final CTA.
-  - Workspace at /workspace: one capture line, three columns (Inbox, Shaping, Decided), search, counts, start over. Keys: n focuses capture, / focuses search.
-  - Idea page at /idea/:id: title, the thought, three shaping questions, verdict row (yes, not now, no), delete, send back to shaping.
-  - Data: localStorage store behind useSyncExternalStore, seed ideas on first run, relative dates (today, yesterday, Aug 3).
-- Stack: Vite 7, React 19, TypeScript strict, Tailwind CSS v4, react-router 7, framer-motion, Bun. Fonts: Newsreader variable for display, Inter variable for UI.
-- Verified: bun tsc -b --noEmit is clean, bun run build is clean (dist output includes theme tokens and custom classes).
-- The freebuff-preview CLI was not present in this session (command not found), so preview commands could not be saved with it. Standard scripts live in package.json: dev, build, preview, typecheck. The platform should auto-detect dev/build.
-- Tradeoffs documented in agent.md: localStorage only, no auth, no backend. The upgrade path to Convex is the store module.
+### 2026-08-15: Standing rule, sync after every prompt
 
-### 2026-08-15 — Initial inspection (repo connected)
+- Owner asked that every change made in a session be committed and pushed to GitHub after every prompt. From now on, when a turn produces changes, commit them to main and push before the turn ends. Stage only the files that belong to that turn. Do not wait to be asked.
 
-- Connected repo: enginoor/idea (branch main, single commit 0c02e8a "Create context.md").
-- The repository contained no application code, only context.md.
-- No install/preview/build commands were configured at that time.
+### 2026-08-15: First build (agent.md, full web app)
+
+- Built and shipped a React web app called idea. It was removed in the next session on the owner's request and is no longer part of the repo.
