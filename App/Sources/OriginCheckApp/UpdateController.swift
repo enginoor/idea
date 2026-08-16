@@ -54,7 +54,11 @@ final class UpdateController: NSObject {
 
 // MARK: - SPUStandardUserDriverDelegate
 
-extension UpdateController: SPUStandardUserDriverDelegate {
+// Sparkle 2.9's protocol is not yet annotated for Swift 6 isolation, so
+// the conformance is @preconcurrency: isolation is checked at run time.
+// Sparkle's standard user driver runs on the main thread, matching
+// UpdateController's @MainActor isolation, so the calls are always legal.
+extension UpdateController: @preconcurrency SPUStandardUserDriverDelegate {
 
     /// Opt into Sparkle's Gentle Reminders API. This single declaration is
     /// what stops the "Update Error!" modal from appearing on background or

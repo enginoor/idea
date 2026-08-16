@@ -226,7 +226,7 @@ struct CheckView: View {
     /// Bridges the completion-based NSItemProvider API into async/await.
     private func loadFileURL(from provider: NSItemProvider) async -> URL? {
         await withCheckedContinuation { continuation in
-            _ = provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+            provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
                 let url = (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
                 continuation.resume(returning: url)
             }
