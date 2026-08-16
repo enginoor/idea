@@ -75,13 +75,14 @@ jobs:
           restore-keys: swiftpm-macos-
       - name: Run the engine test suite
         run: swift test
-      # Release config, not debug: the swift.org 6.0.3 compiler crashes in
-      # DWARF generation (IRGenDebugInfoImpl "Failed to reconstruct type")
-      # on the @Observable @Environment(AppState.self) view in the menu bar
-      # extra when building with -g -Onone. Release builds emit no debug
-      # info, so they are unaffected - and this step gates on exactly the
-      # configuration that ships in the DMG, which is the configuration the
-      # Release workflow builds anyway.
+      # Release config, not debug: this gates on exactly the configuration
+      # that ships in the DMG, which is the configuration the Release
+      # workflow builds anyway. The swift.org 6.0.3 compiler crashes in
+      # IRGen ("Failed to reconstruct type") on the @State AppState property
+      # in the App struct when emitting DWARF debug info, and release builds
+      # do include debug info on Apple platforms. The App package disables
+      # the debug-info round-trip check (-disable-round-trip-debug-types,
+      # the workaround the compiler itself suggests) so the build survives.
       - name: Build the macOS app (release config)
         run: cd App && swift build -c release
       - name: Save the Swift build caches
