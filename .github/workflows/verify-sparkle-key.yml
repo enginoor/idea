@@ -20,12 +20,12 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # The macos-14 image ships Swift 5.10, which cannot resolve this
       # Swift 6.0 package, so install the same 6.0.3 toolchain the rest of
       # the pipeline uses.
-      - uses: swift-actions/setup-swift@v2
+      - uses: swift-actions/setup-swift@v2.4.0
         with:
           swift-version: "6.0.3"
 

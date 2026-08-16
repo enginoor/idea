@@ -17,8 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: swift-actions/setup-swift@v2
+      - uses: actions/checkout@v5
+      - uses: swift-actions/setup-swift@v2.4.0
         with:
           swift-version: "6.0.3"
       # actions/cache compresses with zstd when it is installed, roughly
@@ -27,7 +27,7 @@ jobs:
         run: sudo apt-get update -y && sudo apt-get install -y zstd
       - name: Restore the Swift build cache
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: .build
           key: swiftpm-linux-${{ github.sha }}
@@ -36,7 +36,7 @@ jobs:
         run: swift test
       - name: Save the Swift build cache
         if: steps.cache-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: .build
           key: swiftpm-linux-${{ github.sha }}
@@ -53,8 +53,8 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: swift-actions/setup-swift@v2
+      - uses: actions/checkout@v5
+      - uses: swift-actions/setup-swift@v2.4.0
         with:
           swift-version: "6.0.3"
       - name: Install zstd for fast cache compression
@@ -66,7 +66,7 @@ jobs:
       # freshest cache either run has saved.
       - name: Restore the Swift build caches
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             .build
@@ -86,7 +86,7 @@ jobs:
         run: cd App && swift build -c release
       - name: Save the Swift build caches
         if: steps.cache-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             .build

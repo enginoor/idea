@@ -42,8 +42,9 @@ final class AppState {
     init() {
         self.keyStore = KeychainKeyStore()
         self.history = JSONHistoryStore(fileURL: Self.historyURL())
-        self.c2paToolPath = defaults.string(forKey: "c2paToolPath") ?? "c2patool"
-        self.engine = OriginCheckEngine(c2paToolPath: self.c2paToolPath, keyStore: self.keyStore)
+        let toolPath = defaults.string(forKey: "c2paToolPath") ?? "c2patool"
+        self.c2paToolPath = toolPath
+        self.engine = OriginCheckEngine(c2paToolPath: toolPath, keyStore: self.keyStore)
         self.thresholdPreset = ThresholdPreset(
             rawValue: defaults.string(forKey: "thresholdPreset") ?? ""
         ) ?? .balanced
@@ -124,7 +125,7 @@ final class AppState {
             // Hashing a large video on the main actor would freeze the UI
             // for the duration of the read, so the record is built on a
             // background task; only the (cheap) JSON write runs here.
-            let record = await Task.detached {
+            let record = await Task.detached { [storeRawContent] in
                 HistoryRecorder.record(
                     forFileVerdict: verdict,
                     fileURL: url,
