@@ -2,123 +2,94 @@ import SwiftUI
 import UniformTypeIdentifiers
 import OriginCheckEngine
 
+/// The Check surface is split into two panes so the input never fights the
+/// verdict for space: text or file input on the left, and the result on the
+/// right. The divider is draggable, which is the macOS way to trade space
+/// between the two.
 struct CheckView: View {
     @Environment(AppState.self) private var appState
-    @State private var mode: Mode = .text
     @State private var showImporter = false
     @State private var showFolderImporter = false
     @State private var isTargeted = false
 
-    enum Mode: String, CaseIterable, Identifiable {
-        case text
-        case file
-        var id: String { rawValue }
-    }
-
     var body: some View {
         @Bindable var appState = appState
-        // The tab is taller than the window on small screens (verdict
-        // panels, batch report cards, long status text), so the whole
-        // content scrolls instead of clipping components at the bottom.
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Picker("Check", selection: $mode) {
-                    Text("Paste text").tag(Mode.text)
-                    Text("Verify a file").tag(Mode.file)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+        HSplitView {
+            inputPane(appState: appState)
+                .frame(minWidth: 340, idealWidth: 460)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-                if mode == .text {
-                    textAvailabilityBanner
-                    textInput(appState: appState)
+            resultPane
+                .frame(minWidth: 320, idealWidth: 430)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                if appState.checkMode == .text {
+                    Button {
+                        run()
+                    } label: {
+                        Label("Check", systemImage: "play.fill")
+                    }
+                    .keyboardShortcut(.return, modifiers: [.command])
+                    .disabled(
+                        appState.isAnalyzing
+                            || appState.textInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+                    .help("Run the watermark check (Command-Return)")
                 } else {
-                    if !AppState.toolIsReachable(appState.c2paToolPath) {
-                        toolMissingBanner
+                    Button {
+                        showImporter = true
+                    } label: {
+                        Label("Verify File", systemImage: "arrow.up.doc")
                     }
-                    fileDrop
-                }
-
-                HStack(spacing: 12) {
-                    if mode == .text {
-                        Button("Check text") {
-                            run()
-                        }
-                        .keyboardShortcut(.return, modifiers: [.command])
-                        .disabled(appState.isAnalyzing)
-                    }
-
-                    if appState.isAnalyzing {
-                        ProgressView().controlSize(.small)
-                    }
-                    if let message = appState.statusMessage {
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                if let verdict = appState.lastTextVerdict {
-                    VerdictPanel(display: VerdictDisplay.text(verdict))
-                } else if let report = appState.lastBatchReport {
-                    BatchReportView(report: report)
-                } else if let verdict = appState.lastFileVerdict {
-                    VerdictPanel(display: VerdictDisplay.file(verdict))
-                } else {
-                    emptyState
+                    .keyboardShortcut("o", modifiers: [.command])
+                    .disabled(appState.isAnalyzing)
+                    .help("Choose a file to verify (Command-O)")
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(24)
         }
     }
 
-    /// Text watermark detection is honestly unavailable today: Anthropic has
-    /// not published the detection parameters or API, so the engine reports
-    /// unavailable instead of guessing. Say so before the user types instead
-    /// of surprising them with the verdict after the fact.
-    private var textAvailabilityBanner: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "info.circle")
-                .foregroundStyle(.secondary)
-            Text("Text watermark detection is not available yet: Anthropic has not published the detection API or parameters, so the app reports unavailable instead of guessing. File verification (C2PA) works when c2patool is installed.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.yellow.opacity(0.10))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
+    // MARK: Input pane
 
-    private var toolMissingBanner: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle")
-                .foregroundStyle(.orange)
-            Text("c2patool is not reachable at \"\(appState.c2paToolPath)\". Install it once with \u{201C}cargo install c2patool\u{201D} or set the path in Settings.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.orange.opacity(0.10))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-    }
-
-    private func textInput(appState: AppState) -> some View {
+    private func inputPane(appState: AppState) -> some View {
         @Bindable var appState = appState
-        return VStack(alignment: .leading, spacing: 8) {
-            TextEditor(text: $appState.textInput)
-                .font(.body)
-                .frame(minHeight: 180)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .strokeBorder(.quaternary)
-                )
-            Text("Minimum reliable length: \(appState.thresholdPreset.minimumTextLength) characters. Shorter passages report inconclusive.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+        return VStack(alignment: .leading, spacing: 14) {
+            Picker("Check", selection: $appState.checkMode) {
+                Text("Paste text").tag(CheckMode.text)
+                Text("Verify a file").tag(CheckMode.file)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+
+            if appState.checkMode == .text {
+                textAvailabilityBanner
+                textEditor
+                Text("Minimum reliable length: \(appState.thresholdPreset.minimumTextLength) characters. Shorter passages report inconclusive.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                if !AppState.toolIsReachable(appState.c2paToolPath) {
+                    toolMissingBanner
+                }
+                fileDrop
+            }
+
+            statusLine
         }
+        .padding(20)
+    }
+
+    private var textEditor: some View {
+        @Bindable var appState = appState
+        return TextEditor(text: $appState.textInput)
+            .font(.body)
+            .frame(minHeight: 220, maxHeight: .infinity)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(.quaternary)
+            )
     }
 
     private var fileDrop: some View {
@@ -128,26 +99,25 @@ struct CheckView: View {
                     isTargeted ? Color.accentColor : Color.secondary.opacity(0.4),
                     style: StrokeStyle(lineWidth: 1.5, dash: [6])
                 )
-                .frame(maxWidth: .infinity, minHeight: 160)
+                .frame(maxWidth: .infinity, minHeight: 200, maxHeight: .infinity)
                 .overlay(
-                    Text(isTargeted ? "Drop to verify" : "Drop an image, video, audio, or PDF file here")
-                        .foregroundStyle(.secondary)
+                    VStack(spacing: 8) {
+                        Image(systemName: "arrow.down.doc")
+                            .font(.system(size: 28))
+                            .foregroundStyle(isTargeted ? Color.accentColor : .secondary)
+                        Text(isTargeted ? "Drop to verify" : "Drop an image, video, audio, or PDF file here")
+                            .foregroundStyle(.secondary)
+                    }
                 )
                 .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
                     handleDrop(providers)
                     return true
                 }
 
-            Text("Supported: \(supportedFormatsSummary)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
             HStack(spacing: 12) {
                 Button("Choose a file") {
                     showImporter = true
                 }
-                .keyboardShortcut("o", modifiers: [.command])
                 .fileImporter(
                     isPresented: $showImporter,
                     allowedContentTypes: supportedContentTypes
@@ -174,26 +144,162 @@ struct CheckView: View {
                 }
             }
 
+            Text("Supported: \(supportedFormatsSummary)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
             Text("A folder scan verifies every supported file it contains and reports a per-file card. Unsupported files are skipped.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "doc.text.magnifyingglass")
-                .font(.system(size: 32))
-                .foregroundStyle(.tertiary)
-            Text("Paste a passage or drop a file to get a provenance verdict.")
+    private var statusLine: some View {
+        Group {
+            if let message = appState.statusMessage {
+                Label(message, systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: Result pane
+
+    private var resultPane: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                if appState.isAnalyzing {
+                    progressCard
+                } else if let verdict = appState.lastTextVerdict {
+                    VerdictPanel(display: VerdictDisplay.text(verdict))
+                } else if let report = appState.lastBatchReport {
+                    BatchReportView(report: report)
+                } else if let verdict = appState.lastFileVerdict {
+                    VerdictPanel(display: VerdictDisplay.file(verdict))
+                } else {
+                    resultEmptyState
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(20)
+    }
+
+    private var progressCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(appState.checkMode == .text ? "Analyzing text..." : "Verifying...")
+                    .font(.subheadline)
+            }
+            ProgressView()
+                .progressViewStyle(.linear)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(nsColor: .textBackgroundColor))
+        )
+    }
+
+    private var resultEmptyState: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 6) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 30))
+                    .foregroundStyle(.tertiary)
+                Text("No check yet")
+                    .font(.title3.weight(.semibold))
+                Text("Paste text to check for a Claude watermark, or drop a media file to verify its C2PA provenance. The result appears here.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                capabilityRow(
+                    icon: "text.quote",
+                    title: "Text watermark",
+                    detail: "Not available yet: Anthropic has not published the detection API, so the app reports unavailable instead of guessing.",
+                    color: .yellow
+                )
+                capabilityRow(
+                    icon: "checkmark.seal",
+                    title: "File provenance (C2PA)",
+                    detail: AppState.toolIsReachable(appState.c2paToolPath)
+                        ? "Ready. Drop a file or choose one to verify its signed metadata."
+                        : "Needs c2patool. Install it once with cargo install c2patool, then set the path in Settings.",
+                    color: .green
+                )
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(nsColor: .textBackgroundColor))
+        )
+    }
+
+    private func capabilityRow(icon: String, title: String, detail: String, color: Color) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .foregroundStyle(color)
+                .frame(width: 22, height: 22)
+                .background(color.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    // MARK: Banners
+
+    /// Text watermark detection is honestly unavailable today: Anthropic has
+    /// not published the detection parameters or API, so the engine reports
+    /// unavailable instead of guessing. Say so before the user types instead
+    /// of surprising them with the verdict after the fact.
+    private var textAvailabilityBanner: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.secondary)
+            Text("Text watermark detection is not available yet: Anthropic has not published the detection API or parameters, so the app reports unavailable instead of guessing. File verification (C2PA) works when c2patool is installed.")
+                .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 220)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.yellow.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
     }
+
+    private var toolMissingBanner: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+            Text("c2patool is not reachable at \"\(appState.c2paToolPath)\". Install it once with \u{201C}cargo install c2patool\u{201D} or set the path in Settings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    // MARK: Actions
 
     private func run() {
         Task { @MainActor in
-            if mode == .text {
+            if appState.checkMode == .text {
                 await appState.analyzeText(appState.textInput)
             }
         }

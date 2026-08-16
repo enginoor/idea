@@ -6,6 +6,15 @@ Update this file after every prompt so it acts as memory.
 
 ## Session log
 
+### 2026-08-16: macOS UI restructured into proper split-window app
+
+- Owner said the UI was cramped and everything sat in one window. Researched the modern macOS pattern and rebuilt the shell: the main window is now a NavigationSplitView with a sidebar (Check, History) and a detail pane, the way Mail and Finder work. Settings moved out of the tab bar into its own Settings scene (Cmd+,). Added a SettingsLink footer to the sidebar.
+- Check tab is now a draggable two-pane HSplitView: input (text editor or drop zone) on the left, result (verdict card, batch report, progress, or a capability empty state) on the right. The segmented mode picker and a Run/Verify File toolbar button live in the window toolbar. Check mode lives on AppState (`checkMode`) so switching sidebar sections no longer resets text/file mode.
+- History is now master-detail: a searchable record list on the left with selection, and the record's details inline on the right (no more modal sheet). Added per-record delete via context menu, keep Export and Delete All in the toolbar, auto-select the newest record, and keep selection valid after deletes.
+- Verdict cards polished: colored icon badge, confidence readout, accent border, bulleted evidence, and a Copy summary action. History rows get verdict color dots; detail pane has its own Copy summary.
+- Persistence moved from the app scene into a `SettingsPersistence` ViewModifier attached to both the main window and the Settings window, so changes made in either place are saved.
+- Verified: engine suite 52/52 on Linux Swift 6.0.3, all 12 app files parse clean, no stale TabView/Mode/sheet references. App target compiles on macOS in CI on push; the auto-release pipeline ships it.
+
 ### 2026-08-15: Sparkle key generated without a Mac, owner-only step isolated
 
 - Owner asked for an alternative to the Mac key setup. The key is standard Ed25519, so the Mac requirement was only Sparkle's generate_keys binary. Generated the pair with openssl 3.0.2: PKCS#8 PEM private key, public key = base64 of the raw 32-byte ed25519 key (44 chars), which is exactly Sparkle's SUPublicEDKey and sign_update -f formats. Verified the pair with a sign/verify roundtrip before using it.

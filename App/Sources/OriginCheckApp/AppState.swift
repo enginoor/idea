@@ -3,6 +3,15 @@ import AppKit
 import Observation
 import OriginCheckEngine
 
+/// The two input kinds on the Check pane. Lives on AppState, not in the
+/// view, so switching sidebar sections does not silently reset the mode the
+/// user was working in.
+enum CheckMode: String, CaseIterable, Identifiable {
+    case text
+    case file
+    var id: String { rawValue }
+}
+
 @MainActor
 @Observable
 final class AppState {
@@ -13,6 +22,7 @@ final class AppState {
     let keyStore: any KeyStoring
 
     var textInput = ""
+    var checkMode: CheckMode = .text
     var lastTextVerdict: TextVerdict?
     var lastFileVerdict: FileVerdict?
     var lastBatchReport: BatchReport?
