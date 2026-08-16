@@ -126,6 +126,18 @@ Update this file after every prompt so it acts as memory.
 
 - Owner asked that every change made in a session be committed and pushed to GitHub after every prompt. From now on, when a turn produces changes, commit them to main and push before the turn ends. Stage only the files that belong to that turn. Do not wait to be asked.
 
+### 2026-08-16: First real release shipped, fully automatic releases
+
+- Release v0.1.1 shipped automatically with the DMG, Sparkle signature, and appcast entry. The pipeline is now: push to main -> CI -> Release workflow derives the version from commit messages (patch default, feat -> minor, BREAKING/! -> major) -> builds, packages, validates, signs, publishes, verifies. Docs-only and appcast-only commits never trigger a release; the bot's own appcast commit is excluded by paths-ignore.
+- Fixed three release blockers surfaced by the live run: Sparkle 2.9.5 ships Sparkle.framework with Versions/B (validator now accepts A or B), the checksum sanity check ran shasum -c from the wrong directory, and the feed updater now replaces stale entries for the same version instead of leaving a signature that no longer matches the rebuilt DMG.
+- The first auto-release design pushed the version tag from a separate workflow, but GitHub does not trigger workflows for GITHUB_TOKEN-created tags, so the Release never fired. Versioning was folded into the Release workflow itself and the separate workflow deleted.
+
+### 2026-08-16: UI fix pass (cut-off layout, broken drag-drop, detection availability)
+
+- Owner reported components getting cut off, drag-and-drop not working, and detection reporting unavailable. Root causes: CheckView and SettingsView had no scroll container (empty state forced 220pt plus 180pt editor plus tall verdict panels clipped on small windows), and loadFileURL only handled bookmark Data while a non-sandboxed app receives dropped files as NSURL, so every drop silently failed.
+- CheckView and SettingsView now scroll; long raw text in the record sheet scrolls inside its own capped frame. The drop handler accepts URL, bookmark Data, and path strings.
+- Text mode now shows an upfront banner explaining that Anthropic has not published the detection API or parameters, so the app honestly reports unavailable instead of guessing. File mode shows a banner when c2patool is not reachable, and Settings shows a live reachable/not-found hint (AppState.toolIsReachable resolves bare names against PATH).
+
 ### 2026-08-15: First build (agent.md, full web app)
 
 - Built and shipped a React web app called idea. It was removed in the next session on the owner's request and is no longer part of the repo.

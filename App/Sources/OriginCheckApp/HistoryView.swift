@@ -185,13 +185,18 @@ struct RecordDetailView: View {
                 .foregroundStyle(.secondary)
 
             if let rawText = record.rawText {
-                Text(rawText)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color(nsColor: .textBackgroundColor))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                // Long passages must scroll inside the sheet instead of
+                // pushing the evidence list out of the fixed-size window.
+                ScrollView {
+                    Text(rawText)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 200)
+                .padding(10)
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
             List(record.evidence) { item in

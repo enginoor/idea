@@ -201,6 +201,20 @@ final class AppState {
         engine = OriginCheckEngine(c2paToolPath: trimmed, keyStore: keyStore)
     }
 
+    /// True when the configured tool path names an executable that exists:
+    /// an absolute or relative path is checked directly, a bare name is
+    /// resolved against PATH. Cheap and synchronous, so views can show a
+    /// live reachability hint in Settings and on the Check tab.
+    static func toolIsReachable(_ path: String) -> Bool {
+        let expanded = (path as NSString).expandingTildeInPath
+        if expanded.contains("/") {
+            return FileManager.default.isExecutableFile(atPath: expanded)
+        }
+        guard let pathValue = getenv("PATH") else { return false }
+        let dirs = String(cString: pathValue).split(separator: ":").map(String.init)
+        return dirs.contains { FileManager.default.isExecutableFile(atPath: $0 + "/" + expanded) }
+    }
+
     // MARK: Menu actions
 
     /// Reads the clipboard and runs a text check. Shared by the menu bar

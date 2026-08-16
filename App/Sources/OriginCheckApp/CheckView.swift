@@ -17,50 +17,92 @@ struct CheckView: View {
 
     var body: some View {
         @Bindable var appState = appState
-        VStack(alignment: .leading, spacing: 20) {
-            Picker("Check", selection: $mode) {
-                Text("Paste text").tag(Mode.text)
-                Text("Verify a file").tag(Mode.file)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+        // The tab is taller than the window on small screens (verdict
+        // panels, batch report cards, long status text), so the whole
+        // content scrolls instead of clipping components at the bottom.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Picker("Check", selection: $mode) {
+                    Text("Paste text").tag(Mode.text)
+                    Text("Verify a file").tag(Mode.file)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
 
-            if mode == .text {
-                textInput(appState: appState)
-            } else {
-                fileDrop
-            }
-
-            HStack(spacing: 12) {
                 if mode == .text {
-                    Button("Check text") {
-                        run()
+                    textAvailabilityBanner
+                    textInput(appState: appState)
+                } else {
+                    if !AppState.toolIsReachable(appState.c2paToolPath) {
+                        toolMissingBanner
                     }
-                    .keyboardShortcut(.return, modifiers: [.command])
-                    .disabled(appState.isAnalyzing)
+                    fileDrop
                 }
 
-                if appState.isAnalyzing {
-                    ProgressView().controlSize(.small)
-                }
-                if let message = appState.statusMessage {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+                HStack(spacing: 12) {
+                    if mode == .text {
+                        Button("Check text") {
+                            run()
+                        }
+                        .keyboardShortcut(.return, modifiers: [.command])
+                        .disabled(appState.isAnalyzing)
+                    }
 
-            if let verdict = appState.lastTextVerdict {
-                VerdictPanel(display: VerdictDisplay.text(verdict))
-            } else if let report = appState.lastBatchReport {
-                BatchReportView(report: report)
-            } else if let verdict = appState.lastFileVerdict {
-                VerdictPanel(display: VerdictDisplay.file(verdict))
-            } else {
-                emptyState
+                    if appState.isAnalyzing {
+                        ProgressView().controlSize(.small)
+                    }
+                    if let message = appState.statusMessage {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if let verdict = appState.lastTextVerdict {
+                    VerdictPanel(display: VerdictDisplay.text(verdict))
+                } else if let report = appState.lastBatchReport {
+                    BatchReportView(report: report)
+                } else if let verdict = appState.lastFileVerdict {
+                    VerdictPanel(display: VerdictDisplay.file(verdict))
+                } else {
+                    emptyState
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(24)
         }
-        .padding(24)
+    }
+
+    /// Text watermark detection is honestly unavailable today: Anthropic has
+    /// not published the detection parameters or API, so the engine reports
+    /// unavailable instead of guessing. Say so before the user types instead
+    /// of surprising them with the verdict after the fact.
+    private var textAvailabilityBanner: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle")
+                .foregroundStyle(.secondary)
+            Text("Text watermark detection is not available yet: Anthropic has not published the detection API or parameters, so the app reports unavailable instead of guessing. File verification (C2PA) works when c2patool is installed.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.yellow.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var toolMissingBanner: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(.orange)
+            Text("c2patool is not reachable at \"\(appState.c2paToolPath)\". Install it once with \u{201C}cargo install c2patool\u{201D} or set the path in Settings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private func textInput(appState: AppState) -> some View {
@@ -224,10 +266,24 @@ struct CheckView: View {
     }
 
     /// Bridges the completion-based NSItemProvider API into async/await.
+    ///
+    /// A dropped file arrives as an NSURL in a non-sandboxed app (which
+    /// OriginCheck is), as security-scoped bookmark Data in a sandboxed app,
+    /// or rarely as a path string. Handle all three so a drop never silently
+    /// turns into "no file URLs".
     private func loadFileURL(from provider: NSItemProvider) async -> URL? {
         await withCheckedContinuation { continuation in
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                let url = (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
+                let url: URL?
+                if let fileURL = item as? URL {
+                    url = fileURL
+                } else if let data = item as? Data {
+                    url = URL(dataRepresentation: data, relativeTo: nil)
+                } else if let path = item as? String {
+                    url = URL(fileURLWithPath: path)
+                } else {
+                    url = nil
+                }
                 continuation.resume(returning: url)
             }
         }
