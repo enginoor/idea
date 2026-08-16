@@ -1,59 +1,66 @@
-import XCTest
+import Testing
 @testable import OriginCheckEngine
 
-final class MediaFormatTests: XCTestCase {
+@Suite
+struct MediaFormatTests {
+    @Test
     func testKnownExtensionsParse() {
-        XCTAssertEqual(MediaFormat.from(pathExtension: "png"), .png)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "jpg"), .jpg)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "jpeg"), .jpeg)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "svg"), .svg)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "webp"), .webp)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "avif"), .avif)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "heic"), .heic)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "heif"), .heif)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "tif"), .tif)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "tiff"), .tiff)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "dng"), .dng)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "mp4"), .mp4)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "mov"), .mov)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "m4a"), .m4a)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "mp3"), .mp3)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "wav"), .wav)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "pdf"), .pdf)
+        #expect(MediaFormat.from(pathExtension: "png") == .png)
+        #expect(MediaFormat.from(pathExtension: "jpg") == .jpg)
+        #expect(MediaFormat.from(pathExtension: "jpeg") == .jpeg)
+        #expect(MediaFormat.from(pathExtension: "svg") == .svg)
+        #expect(MediaFormat.from(pathExtension: "webp") == .webp)
+        #expect(MediaFormat.from(pathExtension: "avif") == .avif)
+        #expect(MediaFormat.from(pathExtension: "heic") == .heic)
+        #expect(MediaFormat.from(pathExtension: "heif") == .heif)
+        #expect(MediaFormat.from(pathExtension: "tif") == .tif)
+        #expect(MediaFormat.from(pathExtension: "tiff") == .tiff)
+        #expect(MediaFormat.from(pathExtension: "dng") == .dng)
+        #expect(MediaFormat.from(pathExtension: "mp4") == .mp4)
+        #expect(MediaFormat.from(pathExtension: "mov") == .mov)
+        #expect(MediaFormat.from(pathExtension: "m4a") == .m4a)
+        #expect(MediaFormat.from(pathExtension: "mp3") == .mp3)
+        #expect(MediaFormat.from(pathExtension: "wav") == .wav)
+        #expect(MediaFormat.from(pathExtension: "pdf") == .pdf)
     }
 
+    @Test
     func testExtensionParsingIsCaseInsensitive() {
-        XCTAssertEqual(MediaFormat.from(pathExtension: "PNG"), .png)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "Jpg"), .jpg)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "WebP"), .webp)
-        XCTAssertEqual(MediaFormat.from(pathExtension: "MP4"), .mp4)
+        #expect(MediaFormat.from(pathExtension: "PNG") == .png)
+        #expect(MediaFormat.from(pathExtension: "Jpg") == .jpg)
+        #expect(MediaFormat.from(pathExtension: "WebP") == .webp)
+        #expect(MediaFormat.from(pathExtension: "MP4") == .mp4)
     }
 
+    @Test
     func testUnsupportedExtensionsReturnNil() {
-        XCTAssertNil(MediaFormat.from(pathExtension: "txt"))
-        XCTAssertNil(MediaFormat.from(pathExtension: "docx"))
-        XCTAssertNil(MediaFormat.from(pathExtension: "zip"))
-        XCTAssertNil(MediaFormat.from(pathExtension: ""))
+        #expect(MediaFormat.from(pathExtension: "txt") == nil)
+        #expect(MediaFormat.from(pathExtension: "docx") == nil)
+        #expect(MediaFormat.from(pathExtension: "zip") == nil)
+        #expect(MediaFormat.from(pathExtension: "") == nil)
     }
 
+    @Test
     func testIsSupportedMatchesFrom() {
-        XCTAssertTrue(MediaFormat.isSupported(pathExtension: "png"))
-        XCTAssertTrue(MediaFormat.isSupported(pathExtension: "mov"))
-        XCTAssertFalse(MediaFormat.isSupported(pathExtension: "exe"))
+        #expect(MediaFormat.isSupported(pathExtension: "png"))
+        #expect(MediaFormat.isSupported(pathExtension: "mov"))
+        #expect(!MediaFormat.isSupported(pathExtension: "exe"))
     }
 
+    @Test
     func testPdfIsReadOnly() {
-        XCTAssertTrue(MediaFormat.pdf.isReadOnly)
+        #expect(MediaFormat.pdf.isReadOnly)
         for format in MediaFormat.allCases where format != .pdf {
-            XCTAssertFalse(format.isReadOnly, "\(format.rawValue) should not be read-only")
+            #expect(!format.isReadOnly, "\(format.rawValue) should not be read-only")
         }
     }
 
+    @Test
     func testEveryFormatHasAHumanReadableDisplayName() {
         for format in MediaFormat.allCases {
-            XCTAssertFalse(format.displayName.isEmpty)
-            XCTAssertFalse(format.displayName.contains("\u{2014}"), "Display name for \(format.rawValue) must not contain an em dash")
-            XCTAssertFalse(format.displayName.contains("\u{2013}"), "Display name for \(format.rawValue) must not contain an en dash")
+            #expect(!format.displayName.isEmpty)
+            #expect(!format.displayName.contains("\u{2014}"), "Display name for \(format.rawValue) must not contain an em dash")
+            #expect(!format.displayName.contains("\u{2013}"), "Display name for \(format.rawValue) must not contain an en dash")
         }
     }
 }

@@ -1,7 +1,8 @@
-import XCTest
+import Testing
 @testable import OriginCheckEngine
 
-final class CombinerTests: XCTestCase {
+@Suite
+struct CombinerTests {
     private func result(
         _ source: String,
         _ signal: ProviderSignal,
@@ -17,6 +18,7 @@ final class CombinerTests: XCTestCase {
         )
     }
 
+    @Test
     func testNoProvidersEnabledIsNotAvailable() {
         let verdict = VerdictCombiner().combineText(
             results: [],
@@ -24,11 +26,12 @@ final class CombinerTests: XCTestCase {
             providersRun: [],
             preset: .balanced
         )
-        XCTAssertEqual(verdict.kind, .notAvailable)
-        XCTAssertEqual(verdict.confidence.value, 0)
-        XCTAssertFalse(verdict.evidence.isEmpty)
+        #expect(verdict.kind == .notAvailable)
+        #expect(verdict.confidence.value == 0)
+        #expect(!verdict.evidence.isEmpty)
     }
 
+    @Test
     func testWatermarkDetectedHighConfidence() {
         let verdict = VerdictCombiner().combineText(
             results: [result("AnthropicAPI", .detected, confidence: 0.88)],
@@ -36,12 +39,13 @@ final class CombinerTests: XCTestCase {
             providersRun: ["AnthropicAPI"],
             preset: .balanced
         )
-        XCTAssertEqual(verdict.kind, .watermarked)
-        XCTAssertEqual(verdict.confidence.label, .high)
-        XCTAssertTrue(verdict.caveatText.contains("not proof of AI authorship"))
-        XCTAssertFalse(verdict.evidence.isEmpty)
+        #expect(verdict.kind == .watermarked)
+        #expect(verdict.confidence.label == .high)
+        #expect(verdict.caveatText.contains("not proof of AI authorship"))
+        #expect(!verdict.evidence.isEmpty)
     }
 
+    @Test
     func testNoWatermarkDetectedIsNotWatermarkedWithCaveat() {
         let verdict = VerdictCombiner().combineText(
             results: [result("LocalAnalyzer", .notDetected, confidence: 0.2)],
@@ -49,10 +53,11 @@ final class CombinerTests: XCTestCase {
             providersRun: ["LocalAnalyzer"],
             preset: .balanced
         )
-        XCTAssertEqual(verdict.kind, .notWatermarked)
-        XCTAssertTrue(verdict.caveatText.contains("does not prove human authorship"))
+        #expect(verdict.kind == .notWatermarked)
+        #expect(verdict.caveatText.contains("does not prove human authorship"))
     }
 
+    @Test
     func testShortTextIsInsufficientAndCapped() {
         let verdict = VerdictCombiner().combineText(
             results: [result("AnthropicAPI", .detected, confidence: 0.9)],
@@ -60,11 +65,12 @@ final class CombinerTests: XCTestCase {
             providersRun: ["AnthropicAPI"],
             preset: .balanced
         )
-        XCTAssertEqual(verdict.kind, .watermarked)
-        XCTAssertLessThanOrEqual(verdict.confidence.value, 0.3)
-        XCTAssertEqual(verdict.confidence.label, .low)
+        #expect(verdict.kind == .watermarked)
+        #expect(verdict.confidence.value <= 0.3)
+        #expect(verdict.confidence.label == .low)
     }
 
+    @Test
     func testShortTextWithoutSignalIsInsufficientInput() {
         let verdict = VerdictCombiner().combineText(
             results: [result("LocalAnalyzer", .insufficient, confidence: 0.1)],
@@ -72,12 +78,13 @@ final class CombinerTests: XCTestCase {
             providersRun: ["LocalAnalyzer"],
             preset: .balanced
         )
-        XCTAssertEqual(verdict.kind, .insufficientInput)
+        #expect(verdict.kind == .insufficientInput)
         // The caveat must match the verdict: this is not a "no watermark"
         // result, it is a "not enough text" result.
-        XCTAssertEqual(verdict.caveatText, Caveats.textTooShort)
+        #expect(verdict.caveatText == Caveats.textTooShort)
     }
 
+    @Test
     func testInsufficientOnlyResultCarriesTooShortCaveat() {
         let verdict = VerdictCombiner().combineText(
             results: [result("LocalAnalyzer", .insufficient, confidence: 0.1)],
@@ -85,10 +92,11 @@ final class CombinerTests: XCTestCase {
             providersRun: ["LocalAnalyzer"],
             preset: .balanced
         )
-        XCTAssertEqual(verdict.kind, .insufficientInput)
-        XCTAssertEqual(verdict.caveatText, Caveats.textTooShort)
+        #expect(verdict.kind == .insufficientInput)
+        #expect(verdict.caveatText == Caveats.textTooShort)
     }
 
+    @Test
     func testAllProvidersUnavailableIsNotAvailable() {
         let verdict = VerdictCombiner().combineText(
             results: [
@@ -99,12 +107,13 @@ final class CombinerTests: XCTestCase {
             providersRun: ["LocalAnalyzer", "AnthropicAPI"],
             preset: .balanced
         )
-        XCTAssertEqual(verdict.kind, .notAvailable)
-        XCTAssertEqual(verdict.confidence.value, 0)
-        XCTAssertFalse(verdict.evidence.isEmpty)
-        XCTAssertTrue(verdict.caveatText.contains("not yet released"))
+        #expect(verdict.kind == .notAvailable)
+        #expect(verdict.confidence.value == 0)
+        #expect(!verdict.evidence.isEmpty)
+        #expect(verdict.caveatText.contains("not yet released"))
     }
 
+    @Test
     func testConflictingSignalsResolveToStrongerAndShowConflict() {
         let verdict = VerdictCombiner().combineText(
             results: [
@@ -115,11 +124,12 @@ final class CombinerTests: XCTestCase {
             providersRun: ["AnthropicAPI", "LocalAnalyzer"],
             preset: .balanced
         )
-        XCTAssertEqual(verdict.kind, .watermarked)
-        XCTAssertEqual(verdict.confidence.label, .high)
-        XCTAssertEqual(verdict.providersRun.count, 2)
+        #expect(verdict.kind == .watermarked)
+        #expect(verdict.confidence.label == .high)
+        #expect(verdict.providersRun.count == 2)
     }
 
+    @Test
     func testStrictPresetRaisesMinimumLength() {
         let short = VerdictCombiner().combineText(
             results: [result("LocalAnalyzer", .insufficient, confidence: 0.1)],
@@ -127,7 +137,7 @@ final class CombinerTests: XCTestCase {
             providersRun: ["LocalAnalyzer"],
             preset: .strict
         )
-        XCTAssertEqual(short.kind, .insufficientInput)
+        #expect(short.kind == .insufficientInput)
 
         let relaxed = VerdictCombiner().combineText(
             results: [result("LocalAnalyzer", .insufficient, confidence: 0.1)],
@@ -135,9 +145,10 @@ final class CombinerTests: XCTestCase {
             providersRun: ["LocalAnalyzer"],
             preset: .relaxed
         )
-        XCTAssertEqual(relaxed.kind, .insufficientInput)
+        #expect(relaxed.kind == .insufficientInput)
     }
 
+    @Test
     func testEveryVerdictCarriesEvidenceAndCaveat() {
         let combiner = VerdictCombiner()
         let cases: [ProviderSignal] = [.detected, .notDetected, .insufficient, .unavailable]
@@ -148,8 +159,8 @@ final class CombinerTests: XCTestCase {
                 providersRun: ["LocalAnalyzer"],
                 preset: .balanced
             )
-            XCTAssertFalse(verdict.evidence.isEmpty, "No verdict without evidence for \(signal)")
-            XCTAssertFalse(verdict.caveatText.isEmpty, "No verdict without a caveat for \(signal)")
+            #expect(!verdict.evidence.isEmpty, "No verdict without evidence for \(signal)")
+            #expect(!verdict.caveatText.isEmpty, "No verdict without a caveat for \(signal)")
         }
     }
 }

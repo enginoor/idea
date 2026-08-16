@@ -1,36 +1,42 @@
-import XCTest
+import Testing
 @testable import OriginCheckEngine
 
-final class ConfidenceTests: XCTestCase {
+@Suite
+struct ConfidenceTests {
+    @Test
     func testLabelBoundaries() {
-        XCTAssertEqual(ConfidenceRules.label(for: 0.0), .low)
-        XCTAssertEqual(ConfidenceRules.label(for: 0.39), .low)
-        XCTAssertEqual(ConfidenceRules.label(for: 0.4), .moderate)
-        XCTAssertEqual(ConfidenceRules.label(for: 0.74), .moderate)
-        XCTAssertEqual(ConfidenceRules.label(for: 0.75), .high)
-        XCTAssertEqual(ConfidenceRules.label(for: 1.0), .high)
+        #expect(ConfidenceRules.label(for: 0.0) == .low)
+        #expect(ConfidenceRules.label(for: 0.39) == .low)
+        #expect(ConfidenceRules.label(for: 0.4) == .moderate)
+        #expect(ConfidenceRules.label(for: 0.74) == .moderate)
+        #expect(ConfidenceRules.label(for: 0.75) == .high)
+        #expect(ConfidenceRules.label(for: 1.0) == .high)
     }
 
+    @Test
     func testConfidenceClampsOutOfRangeValues() {
-        XCTAssertEqual(ConfidenceRules.confidence(-1).value, 0)
-        XCTAssertEqual(ConfidenceRules.confidence(2).value, 1)
+        #expect(ConfidenceRules.confidence(-1).value == 0)
+        #expect(ConfidenceRules.confidence(2).value == 1)
     }
 
+    @Test
     func testCapConfidenceNeverRaises() {
         let capped = ConfidenceRules.capConfidence(0.9, at: 0.3)
-        XCTAssertEqual(capped.value, 0.3)
-        XCTAssertEqual(capped.label, .low)
+        #expect(capped.value == 0.3)
+        #expect(capped.label == .low)
     }
 
+    @Test
     func testKnownConstantsMapToLabels() {
-        XCTAssertEqual(ConfidenceRules.confidence(ConfidenceRules.validSignatureKnownSigner).label, .high)
-        XCTAssertEqual(ConfidenceRules.confidence(ConfidenceRules.validSignatureUnknownSigner).label, .moderate)
-        XCTAssertEqual(ConfidenceRules.confidence(ConfidenceRules.invalidSignature).label, .low)
-        XCTAssertEqual(ConfidenceRules.confidence(ConfidenceRules.noManifest).label, .low)
+        #expect(ConfidenceRules.confidence(ConfidenceRules.validSignatureKnownSigner).label == .high)
+        #expect(ConfidenceRules.confidence(ConfidenceRules.validSignatureUnknownSigner).label == .moderate)
+        #expect(ConfidenceRules.confidence(ConfidenceRules.invalidSignature).label == .low)
+        #expect(ConfidenceRules.confidence(ConfidenceRules.noManifest).label == .low)
     }
 
+    @Test
     func testShortTextConfidenceIsLow() {
-        XCTAssertEqual(ConfidenceRules.shortTextConfidence.label, .low)
-        XCTAssertLessThanOrEqual(ConfidenceRules.shortTextConfidence.value, 0.2)
+        #expect(ConfidenceRules.shortTextConfidence.label == .low)
+        #expect(ConfidenceRules.shortTextConfidence.value <= 0.2)
     }
 }

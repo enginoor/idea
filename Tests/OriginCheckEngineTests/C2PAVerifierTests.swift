@@ -1,11 +1,15 @@
-import XCTest
+import Testing
 @testable import OriginCheckEngine
 
-final class C2PAVerifierTests: XCTestCase {
-    private var stubToolURL: URL!
-    private var fixturesDir: URL!
+@Suite
+struct C2PAVerifierTests {
+    private let stubToolURL: URL
+    private let fixturesDir: URL
 
-    override func setUpWithError() throws {
+    // Swift Testing creates a fresh instance of the suite for each test, so
+    // building the stub here gives the same per-test isolation XCTest's
+    // setUp provided.
+    init() {
         let testFile = URL(fileURLWithPath: #filePath)
         fixturesDir = testFile
             .deletingLastPathComponent()
@@ -35,13 +39,14 @@ final class C2PAVerifierTests: XCTestCase {
 
         let toolDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("OriginCheckTests-\(UUID().uuidString)")
-        try FileManager.default.createDirectory(at: toolDir, withIntermediateDirectories: true)
-        stubToolURL = toolDir.appendingPathComponent("c2patool")
-        try script.write(to: stubToolURL, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes(
+        try! FileManager.default.createDirectory(at: toolDir, withIntermediateDirectories: true)
+        let url = toolDir.appendingPathComponent("c2patool")
+        try! script.write(to: url, atomically: true, encoding: .utf8)
+        try! FileManager.default.setAttributes(
             [.posixPermissions: 0o755],
-            ofItemAtPath: stubToolURL.path
+            ofItemAtPath: url.path
         )
+        stubToolURL = url
     }
 
     private func makeDummyFile(named name: String) throws -> URL {
@@ -57,53 +62,58 @@ final class C2PAVerifierTests: XCTestCase {
         C2PAVerifier(toolPath: stubToolURL.path)
     }
 
+    @Test
     func testSignedIntactVerdict() async throws {
         let url = try makeDummyFile(named: "chart-intact.png")
         let verdict = try await verifier().verifyFile(at: url)
-        XCTAssertEqual(verdict.kind, .watermarked)
-        XCTAssertEqual(verdict.manifestPresent, true)
-        XCTAssertEqual(verdict.signatureValid, true)
-        XCTAssertEqual(verdict.modifiedSinceSigning, false)
-        XCTAssertEqual(verdict.softwareAgent, "Claude")
-        XCTAssertTrue(verdict.signer?.contains("Claude") == true)
-        XCTAssertEqual(verdict.confidence.label, .high)
-        XCTAssertEqual(verdict.format, "png")
-        XCTAssertFalse(verdict.claims.isEmpty)
-        XCTAssertEqual(verdict.claims.first?.action, "c2pa.created")
-        XCTAssertTrue(verdict.caveatText.contains("signed by"))
-        XCTAssertFalse(verdict.evidence.isEmpty)
+        #expect(verdict.kind == .watermarked)
+        #expect(verdict.manifestPresent == true)
+        #expect(verdict.signatureValid == true)
+        #expect(verdict.modifiedSinceSigning == false)
+        #expect(verdict.softwareAgent == "Claude")
+        #expect(verdict.signer?.contains("Claude") == true)
+        #expect(verdict.confidence.label == .high)
+        #expect(verdict.format == "png")
+        #expect(!verdict.claims.isEmpty)
+        #expect(verdict.claims.first?.action == "c2pa.created")
+        #expect(verdict.caveatText.contains("signed by"))
+        #expect(!verdict.evidence.isEmpty)
     }
 
+    @Test
     func testSignedModifiedVerdictIsRedAndFactual() async throws {
         let url = try makeDummyFile(named: "photo-modified.jpg")
         let verdict = try await verifier().verifyFile(at: url)
-        XCTAssertEqual(verdict.kind, .watermarked)
-        XCTAssertEqual(verdict.signatureValid, true)
-        XCTAssertEqual(verdict.modifiedSinceSigning, true)
-        XCTAssertEqual(verdict.confidence.label, .high)
-        XCTAssertTrue(verdict.caveatText.contains("modified after"))
-        XCTAssertFalse(verdict.caveatText.contains("not modified"))
+        #expect(verdict.kind == .watermarked)
+        #expect(verdict.signatureValid == true)
+        #expect(verdict.modifiedSinceSigning == true)
+        #expect(verdict.confidence.label == .high)
+        #expect(verdict.caveatText.contains("modified after"))
+        #expect(!verdict.caveatText.contains("not modified"))
     }
 
+    @Test
     func testUnknownSignerReducesConfidence() async throws {
         let known = try await verifier().verifyFile(at: makeDummyFile(named: "chart-intact.png"))
         let unknown = try await verifier().verifyFile(at: makeDummyFile(named: "mystery-unknown.png"))
-        XCTAssertEqual(unknown.kind, .watermarked)
-        XCTAssertEqual(unknown.signatureValid, true)
-        XCTAssertTrue(unknown.signer?.contains("Unknown") == true)
-        XCTAssertEqual(unknown.confidence.label, .moderate)
-        XCTAssertLessThan(unknown.confidence.value, known.confidence.value)
+        #expect(unknown.kind == .watermarked)
+        #expect(unknown.signatureValid == true)
+        #expect(unknown.signer?.contains("Unknown") == true)
+        #expect(unknown.confidence.label == .moderate)
+        #expect(unknown.confidence.value < known.confidence.value)
     }
 
+    @Test
     func testExpiredCertificateIsInconclusive() async throws {
         let url = try makeDummyFile(named: "document-expired.svg")
         let verdict = try await verifier().verifyFile(at: url)
-        XCTAssertEqual(verdict.kind, .inconclusive)
-        XCTAssertEqual(verdict.signatureValid, false)
-        XCTAssertEqual(verdict.confidence.label, .low)
-        XCTAssertTrue(verdict.evidence.contains { $0.kind == "signature_validity" })
+        #expect(verdict.kind == .inconclusive)
+        #expect(verdict.signatureValid == false)
+        #expect(verdict.confidence.label == .low)
+        #expect(verdict.evidence.contains { $0.kind == "signature_validity" })
     }
 
+    @Test
     func testHashMismatchWithoutValidSignatureIsNotReportedAsModification() async throws {
         // A hash mismatch only proves modification when the signature itself
         // verifies. With an expired certificate the manifest cannot be
@@ -111,34 +121,36 @@ final class C2PAVerifierTests: XCTestCase {
         // as a fact would overstate what is provable.
         let url = try makeDummyFile(named: "photo-expired-hash.jpg")
         let verdict = try await verifier().verifyFile(at: url)
-        XCTAssertEqual(verdict.kind, .inconclusive)
-        XCTAssertEqual(verdict.signatureValid, false)
-        XCTAssertNil(verdict.modifiedSinceSigning)
-        XCTAssertFalse(verdict.evidence.contains { $0.kind == "asset_hash" })
+        #expect(verdict.kind == .inconclusive)
+        #expect(verdict.signatureValid == false)
+        #expect(verdict.modifiedSinceSigning == nil)
+        #expect(!verdict.evidence.contains { $0.kind == "asset_hash" })
     }
 
+    @Test
     func testNoManifestIsNotWatermarkedWithCaveat() async throws {
         let url = try makeDummyFile(named: "screenshot.png")
         let verdict = try await verifier().verifyFile(at: url)
-        XCTAssertEqual(verdict.kind, .notWatermarked)
-        XCTAssertEqual(verdict.manifestPresent, false)
-        XCTAssertNil(verdict.signatureValid)
-        XCTAssertTrue(verdict.caveatText.contains("does not prove human authorship"))
-        XCTAssertTrue(verdict.evidence.contains { $0.kind == "manifest_absent" })
+        #expect(verdict.kind == .notWatermarked)
+        #expect(verdict.manifestPresent == false)
+        #expect(verdict.signatureValid == nil)
+        #expect(verdict.caveatText.contains("does not prove human authorship"))
+        #expect(verdict.evidence.contains { $0.kind == "manifest_absent" })
     }
 
+    @Test
     func testVerificationIsDeterministic() async throws {
         let url = try makeDummyFile(named: "chart-intact.png")
         let first = try await verifier().verifyFile(at: url)
         let second = try await verifier().verifyFile(at: url)
         // Evidence items carry freshly generated UUIDs, so compare everything
         // except those ids: the content must be byte-for-byte identical.
-        XCTAssertEqual(normalized(first), normalized(second))
-        XCTAssertEqual(first.kind, second.kind)
-        XCTAssertEqual(first.confidence, second.confidence)
-        XCTAssertEqual(first.signer, second.signer)
-        XCTAssertEqual(first.claims, second.claims)
-        XCTAssertEqual(first.caveatText, second.caveatText)
+        #expect(normalized(first) == normalized(second))
+        #expect(first.kind == second.kind)
+        #expect(first.confidence == second.confidence)
+        #expect(first.signer == second.signer)
+        #expect(first.claims == second.claims)
+        #expect(first.caveatText == second.caveatText)
     }
 
     private struct EvidenceFingerprint: Equatable {
@@ -154,48 +166,51 @@ final class C2PAVerifierTests: XCTestCase {
         }
     }
 
-    func testMissingToolThrowsToolUnavailable() async {
+    @Test
+    func testMissingToolThrowsToolUnavailable() async throws {
         let verifier = C2PAVerifier(toolPath: "/nonexistent/c2patool")
         do {
             _ = try await verifier.verifyFile(at: makeDummyFile(named: "chart-intact.png"))
-            XCTFail("Expected toolUnavailable error")
+            Issue.record("Expected toolUnavailable error")
         } catch let error as C2PAVerifier.VerificationError {
             if case .toolUnavailable = error {
                 // expected
             } else {
-                XCTFail("Unexpected error: \(error)")
+                Issue.record("Unexpected error: \(error)")
             }
         } catch {
-            XCTFail("Unexpected error: \(error)")
+            Issue.record("Unexpected error: \(error)")
         }
     }
 
+    @Test
     func testHungToolTimesOutInsteadOfHangingForever() async throws {
         let url = try makeDummyFile(named: "video-sleepy.mp4")
         let verifier = C2PAVerifier(toolPath: stubToolURL.path, timeout: 1)
         let start = Date()
         do {
             _ = try await verifier.verifyFile(at: url)
-            XCTFail("Expected toolTimeout error")
+            Issue.record("Expected toolTimeout error")
         } catch let error as C2PAVerifier.VerificationError {
             if case .toolTimeout = error {
                 // expected
             } else {
-                XCTFail("Unexpected error: \(error)")
+                Issue.record("Unexpected error: \(error)")
             }
         } catch {
-            XCTFail("Unexpected error: \(error)")
+            Issue.record("Unexpected error: \(error)")
         }
         // The stub sleeps 10 seconds; the verifier must return long before
         // that instead of waiting for the tool to finish.
-        XCTAssertLessThan(Date().timeIntervalSince(start), 5)
+        #expect(Date().timeIntervalSince(start) < 5)
     }
 
+    @Test
     func testUnknownsNeverIncreaseConfidence() async throws {
         let intact = try await verifier().verifyFile(at: makeDummyFile(named: "chart-intact.png"))
         let expired = try await verifier().verifyFile(at: makeDummyFile(named: "document-expired.svg"))
         let none = try await verifier().verifyFile(at: makeDummyFile(named: "screenshot.png"))
-        XCTAssertGreaterThan(intact.confidence.value, expired.confidence.value)
-        XCTAssertGreaterThan(intact.confidence.value, none.confidence.value)
+        #expect(intact.confidence.value > expired.confidence.value)
+        #expect(intact.confidence.value > none.confidence.value)
     }
 }

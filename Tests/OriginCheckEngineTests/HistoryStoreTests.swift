@@ -1,7 +1,8 @@
-import XCTest
+import Testing
 @testable import OriginCheckEngine
 
-final class HistoryStoreTests: XCTestCase {
+@Suite
+struct HistoryStoreTests {
     private func makeStore() throws -> JSONHistoryStore {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("OriginCheckHistory-\(UUID().uuidString)")
@@ -9,21 +10,23 @@ final class HistoryStoreTests: XCTestCase {
         return JSONHistoryStore(fileURL: dir.appendingPathComponent("history.json"))
     }
 
+    @Test
     func testSHA256KnownVectors() {
-        XCTAssertEqual(
-            SHA256.hashString("abc"),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        #expect(
+            SHA256.hashString("abc") ==
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         )
-        XCTAssertEqual(
-            SHA256.hashString(""),
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        #expect(
+            SHA256.hashString("") ==
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         )
-        XCTAssertEqual(
-            SHA256.hashString("The quick brown fox jumps over the lazy dog"),
-            "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592"
+        #expect(
+            SHA256.hashString("The quick brown fox jumps over the lazy dog") ==
+                "d7a8fbb307d7809469ca9abcb0082e4f8d5651e46d3cdb762d02d0bf37c9e592"
         )
     }
 
+    @Test
     func testHashFileMatchesHashData() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("OriginCheckHash-\(UUID().uuidString)")
@@ -37,18 +40,20 @@ final class HistoryStoreTests: XCTestCase {
         }
         let data = Data(bytes)
         try data.write(to: url)
-        XCTAssertEqual(try SHA256.hashFile(at: url), SHA256.hashData(data))
+        #expect(try SHA256.hashFile(at: url) == SHA256.hashData(data))
     }
 
+    @Test
     func testHashFileEmptyFile() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("OriginCheckHash-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent("empty.bin")
         try Data().write(to: url)
-        XCTAssertEqual(try SHA256.hashFile(at: url), SHA256.hashData(Data()))
+        #expect(try SHA256.hashFile(at: url) == SHA256.hashData(Data()))
     }
 
+    @Test
     func testLargeFileHashingIsLinearNotQuadratic() throws {
         // An 8 MiB file must hash in well under a second with a linear
         // digester. The previous implementation appended each chunk to a
@@ -70,15 +75,15 @@ final class HistoryStoreTests: XCTestCase {
 
         let start = Date()
         let hash = try SHA256.hashFile(at: url)
-        XCTAssertEqual(hash, SHA256.hashData(Data(bytes)))
-        XCTAssertLessThan(
-            Date().timeIntervalSince(start),
-            5.0,
+        #expect(hash == SHA256.hashData(Data(bytes)))
+        #expect(
+            Date().timeIntervalSince(start) < 5.0,
             "Hashing 8 MiB must complete quickly, not quadratically"
         )
     }
 
-    func testFileRecordHashesContentNotName() async throws {
+    @Test
+    func testFileRecordHashesContentNotName() throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("OriginCheckRecord-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -102,11 +107,12 @@ final class HistoryStoreTests: XCTestCase {
         )
 
         let record = HistoryRecorder.record(forFileVerdict: verdict, fileURL: url, storeRawContent: false)
-        XCTAssertEqual(record.inputHash, SHA256.hashData(content))
-        XCTAssertNotEqual(record.inputHash, SHA256.hashString(verdict.fileName))
-        XCTAssertNil(record.fileThumbnailPath)
+        #expect(record.inputHash == SHA256.hashData(content))
+        #expect(record.inputHash != SHA256.hashString(verdict.fileName))
+        #expect(record.fileThumbnailPath == nil)
     }
 
+    @Test
     func testRoundTripAndDelete() async throws {
         let store = try makeStore()
         let first = HistoryRecord(
@@ -127,19 +133,20 @@ final class HistoryStoreTests: XCTestCase {
         try await store.add(second)
 
         let loaded = try await store.allRecords()
-        XCTAssertEqual(loaded.count, 2)
-        XCTAssertEqual(loaded.first?.verdictKind, .watermarked)
+        #expect(loaded.count == 2)
+        #expect(loaded.first?.verdictKind == .watermarked)
 
         try await store.delete(id: first.id)
         let afterDelete = try await store.allRecords()
-        XCTAssertEqual(afterDelete.count, 1)
-        XCTAssertEqual(afterDelete.first?.inputType, "file")
+        #expect(afterDelete.count == 1)
+        #expect(afterDelete.first?.inputType == "file")
 
         try await store.deleteAll()
         let afterClear = try await store.allRecords()
-        XCTAssertTrue(afterClear.isEmpty)
+        #expect(afterClear.isEmpty)
     }
 
+    @Test
     func testRawTextNotStoredByDefault() async throws {
         let store = try makeStore()
         let record = HistoryRecorder.record(
@@ -158,8 +165,8 @@ final class HistoryStoreTests: XCTestCase {
         try await store.add(record)
 
         let loaded = try await store.allRecords()
-        XCTAssertEqual(loaded.count, 1)
-        XCTAssertNil(loaded.first?.rawText)
+        #expect(loaded.count == 1)
+        #expect(loaded.first?.rawText == nil)
 
         // The persisted JSON must not contain the raw text either.
         let storeDir = FileManager.default.temporaryDirectory
@@ -169,9 +176,10 @@ final class HistoryStoreTests: XCTestCase {
         let explicit = JSONHistoryStore(fileURL: fileURL)
         try await explicit.add(record)
         let json = try String(contentsOf: fileURL, encoding: .utf8)
-        XCTAssertFalse(json.contains("private essay"))
+        #expect(!json.contains("private essay"))
     }
 
+    @Test
     func testRawTextStoredOnlyWithConsent() async throws {
         let store = try makeStore()
         let record = HistoryRecorder.record(
@@ -189,9 +197,10 @@ final class HistoryStoreTests: XCTestCase {
         )
         try await store.add(record)
         let loaded = try await store.allRecords()
-        XCTAssertEqual(loaded.first?.rawText, "Essay the user consented to keep.")
+        #expect(loaded.first?.rawText == "Essay the user consented to keep.")
     }
 
+    @Test
     func testCorruptHistoryFileIsQuarantinedNotFatal() async throws {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("OriginCheckHistory-\(UUID().uuidString)")
@@ -201,11 +210,11 @@ final class HistoryStoreTests: XCTestCase {
 
         let store = JSONHistoryStore(fileURL: fileURL)
         let loaded = try await store.allRecords()
-        XCTAssertTrue(loaded.isEmpty)
+        #expect(loaded.isEmpty)
 
         // The unreadable bytes were moved aside, not silently overwritten.
         let files = try FileManager.default.contentsOfDirectory(atPath: dir.path)
-        XCTAssertTrue(files.contains { $0.hasPrefix("history-corrupt-") })
+        #expect(files.contains { $0.hasPrefix("history-corrupt-") })
 
         // The store is usable again: new records save and read back.
         let record = HistoryRecord(
@@ -217,16 +226,18 @@ final class HistoryStoreTests: XCTestCase {
         )
         try await store.add(record)
         let after = try await store.allRecords()
-        XCTAssertEqual(after.count, 1)
-        XCTAssertEqual(after.first?.inputHash, "abc123")
+        #expect(after.count == 1)
+        #expect(after.first?.inputHash == "abc123")
     }
 
+    @Test
     func testEmptyStoreReturnsEmpty() async throws {
         let store = try makeStore()
         let loaded = try await store.allRecords()
-        XCTAssertTrue(loaded.isEmpty)
+        #expect(loaded.isEmpty)
     }
 
+    @Test
     func testBatchRecordSummarizesFolderScanAndRoundTrips() async throws {
         let store = try makeStore()
         let summary = BatchSummary(
@@ -248,24 +259,25 @@ final class HistoryStoreTests: XCTestCase {
         )
 
         let record = HistoryRecorder.record(forBatchReport: report, directoryPath: "/Users/test/Photos")
-        XCTAssertEqual(record.verdictKind, .batchScan)
-        XCTAssertEqual(record.inputType, "folder")
-        XCTAssertEqual(record.batchSummary, summary)
-        XCTAssertEqual(record.confidenceValue, 0, "A scan has counts, not a confidence percentage")
-        XCTAssertNil(record.rawText)
-        XCTAssertFalse(record.evidence.isEmpty)
-        XCTAssertEqual(record.inputHash, SHA256.hashString("/Users/test/Photos"))
+        #expect(record.verdictKind == .batchScan)
+        #expect(record.inputType == "folder")
+        #expect(record.batchSummary == summary)
+        #expect(record.confidenceValue == 0, "A scan has counts, not a confidence percentage")
+        #expect(record.rawText == nil)
+        #expect(!record.evidence.isEmpty)
+        #expect(record.inputHash == SHA256.hashString("/Users/test/Photos"))
 
         // The record must survive a real store round trip, which exercises
         // encoding of the new verdict kind and the batchSummary field.
         try await store.add(record)
         let loaded = try await store.allRecords()
-        XCTAssertEqual(loaded.count, 1)
-        XCTAssertEqual(loaded.first?.verdictKind, .batchScan)
-        XCTAssertEqual(loaded.first?.batchSummary, summary)
-        XCTAssertEqual(loaded.first?.inputType, "folder")
+        #expect(loaded.count == 1)
+        #expect(loaded.first?.verdictKind == .batchScan)
+        #expect(loaded.first?.batchSummary == summary)
+        #expect(loaded.first?.inputType == "folder")
     }
 
+    @Test
     func testBatchRecordMentionsMissingTool() {
         let report = BatchReport(
             directoryName: "Photos",
@@ -276,10 +288,11 @@ final class HistoryStoreTests: XCTestCase {
             toolMissing: true
         )
         let record = HistoryRecorder.record(forBatchReport: report, directoryPath: "/Users/test/Photos")
-        XCTAssertEqual(record.verdictKind, .batchScan)
-        XCTAssertTrue(record.evidence.contains { $0.kind == "tool_missing" })
+        #expect(record.verdictKind == .batchScan)
+        #expect(record.evidence.contains { $0.kind == "tool_missing" })
     }
 
+    @Test
     func testHistoryRecordWithoutBatchSummaryStillDecodes() async throws {
         // Records written by earlier app versions have no batchSummary key.
         // The optional field must decode as nil; one old record must not
@@ -295,8 +308,8 @@ final class HistoryStoreTests: XCTestCase {
         try await store.add(record)
 
         let loaded = try await store.allRecords()
-        XCTAssertEqual(loaded.count, 1)
-        XCTAssertEqual(loaded.first?.verdictKind, .watermarked)
-        XCTAssertNil(loaded.first?.batchSummary)
+        #expect(loaded.count == 1)
+        #expect(loaded.first?.verdictKind == .watermarked)
+        #expect(loaded.first?.batchSummary == nil)
     }
 }
