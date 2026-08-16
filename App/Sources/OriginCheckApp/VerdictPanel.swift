@@ -11,6 +11,15 @@ struct VerdictPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
+            if let fileName = display.fileName {
+                Label(fileName, systemImage: "doc")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(fileName)
+            }
+
             HStack(alignment: .top, spacing: 12) {
                 Image(systemName: display.icon)
                     .font(.title3)

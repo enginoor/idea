@@ -40,6 +40,11 @@ public struct VerdictCombiner: Sendable {
         let notDetected = results.filter { $0.signal == .notDetected }
         let insufficient = results.filter { $0.signal == .insufficient }
         let unavailable = results.filter { $0.signal == .unavailable }
+        let inconclusive = results.filter { $0.signal == .inconclusive }
+        // A provider that has something specific to say about its verdict
+        // (for example the local heuristic's disclaimer) wins over the
+        // generic caveat.
+        let providerCaveat = results.first { !$0.caveatText.isEmpty }?.caveatText
 
         if characterCount < preset.minimumTextLength {
             evidence.append(EvidenceItem(
@@ -75,7 +80,7 @@ public struct VerdictCombiner: Sendable {
             evidence.append(EvidenceItem(
                 source: "Combiner",
                 kind: "decision",
-                summary: "A positive watermark signal was found.",
+                summary: "A positive signal was found by an enabled provider.",
                 detail: "Strongest provider confidence: \(String(format: "%.2f", strongest))."
             ))
             let confidence = ConfidenceRules.confidence(strongest)
@@ -86,7 +91,7 @@ public struct VerdictCombiner: Sendable {
                 effectiveTokenEstimate: characterCount / 4,
                 providersRun: providersRun,
                 evidence: evidence,
-                caveatText: Caveats.textPositive(confidenceLabel: confidence.label.rawValue)
+                caveatText: providerCaveat ?? Caveats.textPositive(confidenceLabel: confidence.label.rawValue)
             )
         }
 
@@ -94,7 +99,7 @@ public struct VerdictCombiner: Sendable {
             evidence.append(EvidenceItem(
                 source: "Combiner",
                 kind: "decision",
-                summary: "No watermark signal was found by any enabled provider.",
+                summary: "No positive signal was found by any enabled provider.",
                 detail: "Strongest provider confidence: \(String(format: "%.2f", strongest))."
             ))
             return TextVerdict(
@@ -104,11 +109,29 @@ public struct VerdictCombiner: Sendable {
                 effectiveTokenEstimate: characterCount / 4,
                 providersRun: providersRun,
                 evidence: evidence,
-                caveatText: Caveats.textNegative
+                caveatText: providerCaveat ?? Caveats.textNegative
             )
         }
 
-        if !insufficient.isEmpty && unavailable.isEmpty {
+        if let strongest = inconclusive.map(\.confidence.value).max() {
+            evidence.append(EvidenceItem(
+                source: "Combiner",
+                kind: "decision",
+                summary: "The enabled providers could not resolve a clear signal.",
+                detail: "Strongest provider confidence: \(String(format: "%.2f", strongest))."
+            ))
+            return TextVerdict(
+                kind: .inconclusive,
+                confidence: ConfidenceRules.confidence(strongest),
+                characterCount: characterCount,
+                effectiveTokenEstimate: characterCount / 4,
+                providersRun: providersRun,
+                evidence: evidence,
+                caveatText: providerCaveat ?? Caveats.textInconclusive
+            )
+        }
+
+        if !insufficient.isEmpty {
             evidence.append(EvidenceItem(
                 source: "Combiner",
                 kind: "decision",

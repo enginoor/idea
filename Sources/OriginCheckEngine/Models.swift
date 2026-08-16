@@ -149,6 +149,9 @@ public struct HistoryRecord: Codable, Identifiable, Sendable, Equatable {
     public var id: UUID
     public var date: Date
     public var inputType: String
+    /// The file name for file records (nil for text and folder records).
+    /// Optional so older history files without the field still decode.
+    public var fileName: String?
     public var inputHash: String
     public var verdictKind: VerdictKind
     public var confidenceValue: Double
@@ -168,6 +171,7 @@ public struct HistoryRecord: Codable, Identifiable, Sendable, Equatable {
         verdictKind: VerdictKind,
         confidenceValue: Double,
         evidence: [EvidenceItem],
+        fileName: String? = nil,
         rawText: String? = nil,
         fileThumbnailPath: String? = nil,
         batchSummary: BatchSummary? = nil
@@ -175,6 +179,7 @@ public struct HistoryRecord: Codable, Identifiable, Sendable, Equatable {
         self.id = id
         self.date = date
         self.inputType = inputType
+        self.fileName = fileName
         self.inputHash = inputHash
         self.verdictKind = verdictKind
         self.confidenceValue = confidenceValue

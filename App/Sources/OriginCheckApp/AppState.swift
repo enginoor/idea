@@ -26,8 +26,16 @@ final class AppState {
     var lastTextVerdict: TextVerdict?
     var lastFileVerdict: FileVerdict?
     var lastBatchReport: BatchReport?
+    /// The file that produced the current file verdict. Used by the Check
+    /// pane to name the file while it verifies and in the result header, so
+    /// a check is never an anonymous verdict.
+    var lastFileURL: URL?
     var isAnalyzing = false
     var statusMessage: String?
+
+    var lastFileName: String? {
+        lastFileURL?.lastPathComponent
+    }
 
     private let defaults = UserDefaults.standard
 
@@ -101,6 +109,7 @@ final class AppState {
             lastTextVerdict = verdict
             lastFileVerdict = nil
             lastBatchReport = nil
+            lastFileURL = nil
             statusMessage = nil
             let record = HistoryRecorder.record(
                 forTextVerdict: verdict,
@@ -131,6 +140,7 @@ final class AppState {
             lastFileVerdict = verdict
             lastTextVerdict = nil
             lastBatchReport = nil
+            lastFileURL = url
             statusMessage = nil
             // Hashing a large video on the main actor would freeze the UI
             // for the duration of the read, so the record is built on a
@@ -167,6 +177,7 @@ final class AppState {
             lastBatchReport = report
             lastTextVerdict = nil
             lastFileVerdict = nil
+            lastFileURL = url
             statusMessage = nil
             // A folder scan is a record of counts, not a single verdict, so
             // it is stored with kind .batchScan. Building the record only

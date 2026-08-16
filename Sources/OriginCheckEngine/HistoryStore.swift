@@ -106,6 +106,7 @@ public enum HistoryRecorder {
             verdictKind: verdict.kind,
             confidenceValue: verdict.confidence.value,
             evidence: verdict.evidence,
+            fileName: verdict.fileName,
             rawText: nil,
             fileThumbnailPath: storeRawContent ? fileURL?.path : nil
         )

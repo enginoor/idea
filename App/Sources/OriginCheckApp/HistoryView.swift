@@ -159,6 +159,7 @@ struct HistoryView: View {
         if query.isEmpty { return records }
         return records.filter { record in
             record.inputType.lowercased().contains(query)
+                || (record.fileName?.lowercased().contains(query) ?? false)
                 || record.verdictKind.rawValue.lowercased().contains(query)
                 || record.verdictKind.historyTitle.lowercased().contains(query)
                 || record.inputHash.lowercased().contains(query)
@@ -223,9 +224,11 @@ private struct HistoryRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(record.verdictKind.historyTitle)
                     .font(.body.weight(.medium))
-                Text("\(record.inputType) · \(record.date.formatted(date: .abbreviated, time: .shortened))")
+                Text("\(record.fileName ?? record.inputType) · \(record.date.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
             Spacer()
             if let summary = record.batchSummary {
@@ -292,6 +295,17 @@ struct RecordDetailPane: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
 
+                if let image = thumbnailImage {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 220)
+                        .frame(maxWidth: .infinity)
+                        .padding(10)
+                        .background(Color(nsColor: .textBackgroundColor))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+
                 if let rawText = record.rawText {
                     // Long passages must scroll inside the pane instead of
                     // pushing the evidence list out of view.
@@ -330,9 +344,11 @@ struct RecordDetailPane: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(record.verdictKind.historyTitle)
                     .font(.title2.weight(.semibold))
-                Text("\(record.inputType) · \(record.date.formatted(date: .abbreviated, time: .shortened))")
+                Text("\(record.fileName ?? record.inputType) · \(record.date.formatted(date: .abbreviated, time: .shortened))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
             }
             Spacer()
             if let summary = record.batchSummary {
@@ -347,6 +363,23 @@ struct RecordDetailPane: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// A preview of the verified image when the user opted to store raw
+    /// content and the file is still on disk. Only image formats are
+    /// previewed; audio, video, and PDF records get no fake icon. Loaded
+    /// lazily by NSImage, so a huge photo does not decode until shown.
+    private var thumbnailImage: NSImage? {
+        guard let path = record.fileThumbnailPath,
+              FileManager.default.fileExists(atPath: path),
+              Self.isPreviewableImage(path)
+        else { return nil }
+        return NSImage(contentsOf: URL(fileURLWithPath: path))
+    }
+
+    private static func isPreviewableImage(_ path: String) -> Bool {
+        let ext = (path as NSString).pathExtension.lowercased()
+        return ["png", "jpg", "jpeg", "heic", "heif", "webp", "avif", "tif", "tiff", "gif", "svg"].contains(ext)
     }
 
     private var evidenceSection: some View {

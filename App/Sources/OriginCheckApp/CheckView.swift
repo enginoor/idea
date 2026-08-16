@@ -36,7 +36,7 @@ struct CheckView: View {
                         appState.isAnalyzing
                             || appState.textInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     )
-                    .help("Run the watermark check (Command-Return)")
+                    .help("Run the text check (Command-Return)")
                 } else {
                     Button {
                         showImporter = true
@@ -66,6 +66,7 @@ struct CheckView: View {
             if appState.checkMode == .text {
                 textAvailabilityBanner
                 textEditor
+                textActionsRow
                 Text("Minimum reliable length: \(appState.thresholdPreset.minimumTextLength) characters. Shorter passages report inconclusive.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -90,6 +91,61 @@ struct CheckView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .strokeBorder(.quaternary)
             )
+    }
+
+    /// One row of quick actions under the editor: paste the clipboard, load
+    /// a sample passage, or clear. Each gets the user to a verdict with one
+    /// click instead of leaving them staring at an empty editor.
+    private var textActionsRow: some View {
+        HStack(spacing: 8) {
+            Button {
+                pasteFromClipboard()
+            } label: {
+                Label("Paste", systemImage: "doc.on.clipboard")
+            }
+            .controlSize(.small)
+            .disabled(appState.isAnalyzing)
+            .help("Paste the clipboard and check it")
+
+            Button {
+                appState.textInput = Self.sampleText
+            } label: {
+                Label("Sample", systemImage: "text.quote")
+            }
+            .controlSize(.small)
+            .disabled(appState.isAnalyzing)
+            .help("Load a sample passage to try the heuristic")
+
+            Button {
+                appState.textInput = ""
+            } label: {
+                Label("Clear", systemImage: "eraser")
+            }
+            .controlSize(.small)
+            .disabled(appState.textInput.isEmpty || appState.isAnalyzing)
+            .help("Clear the editor")
+
+            Spacer()
+        }
+    }
+
+    /// A deliberately uniform, AI-typical passage: nearly every sentence has
+    /// the same length and shape, which the local heuristic scores as a
+    /// strong positive signal. It exists so a first-time user sees the
+    /// feature work without hunting for a piece of machine text.
+    static let sampleText = """
+    The quarterly review showed steady growth across every region. The team met the targets that were set at the start. Customers responded well to the new product features. The support queue returned to normal after the update. Engineering shipped the release ahead of the original schedule. Marketing measured strong engagement with the new campaign. The board approved the investment plan for next year. Operations reduced costs without affecting service quality. The design team delivered the updated interface on time. Sales reported the strongest quarter in company history. The leadership team agreed on the priorities for the spring. The roadmap for the next release is now finalized.
+    """
+
+    private func pasteFromClipboard() {
+        guard let text = NSPasteboard.general.string(forType: .string),
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            appState.statusMessage = "The clipboard does not contain any text."
+            return
+        }
+        appState.textInput = text
+        run()
     }
 
     private var fileDrop: some View {
@@ -192,8 +248,15 @@ struct CheckView: View {
             HStack(spacing: 10) {
                 ProgressView()
                     .controlSize(.small)
-                Text(appState.checkMode == .text ? "Analyzing text..." : "Verifying...")
-                    .font(.subheadline)
+                if appState.checkMode == .file, let name = appState.lastFileName {
+                    Text("Verifying \(name)...")
+                        .font(.subheadline)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                } else {
+                    Text(appState.checkMode == .text ? "Analyzing text..." : "Verifying...")
+                        .font(.subheadline)
+                }
             }
             ProgressView()
                 .progressViewStyle(.linear)
@@ -214,7 +277,7 @@ struct CheckView: View {
                     .foregroundStyle(.tertiary)
                 Text("No check yet")
                     .font(.title3.weight(.semibold))
-                Text("Paste text to check for a Claude watermark, or drop a media file to verify its C2PA provenance. The result appears here.")
+                Text("Paste text to run the AI-pattern heuristic, or drop a media file to verify its C2PA provenance. The result appears here.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -224,9 +287,9 @@ struct CheckView: View {
             VStack(alignment: .leading, spacing: 8) {
                 capabilityRow(
                     icon: "text.quote",
-                    title: "Text watermark",
-                    detail: "Not available yet: Anthropic has not published the detection API, so the app reports unavailable instead of guessing.",
-                    color: .yellow
+                    title: "Text analysis",
+                    detail: "Ready. Paste text or use the sample to run the local statistical heuristic for AI-typical writing patterns.",
+                    color: .green
                 )
                 capabilityRow(
                     icon: "checkmark.seal",
@@ -265,15 +328,15 @@ struct CheckView: View {
 
     // MARK: Banners
 
-    /// Text watermark detection is honestly unavailable today: Anthropic has
-    /// not published the detection parameters or API, so the engine reports
-    /// unavailable instead of guessing. Say so before the user types instead
-    /// of surprising them with the verdict after the fact.
+    /// Text checks run through the local statistical heuristic. Anthropic's
+    /// official watermark detector has not been released, so the banner says
+    /// what the result actually is before the user types, instead of
+    /// surprising them with the verdict after the fact.
     private var textAvailabilityBanner: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "info.circle")
                 .foregroundStyle(.secondary)
-            Text("Text watermark detection is not available yet: Anthropic has not published the detection API or parameters, so the app reports unavailable instead of guessing. File verification (C2PA) works when c2patool is installed.")
+            Text("Text checks use a local statistical heuristic (sentence-length uniformity and phrase repetition). Anthropic's official watermark detector has not been released yet, so treat results as a signal, not proof. File verification (C2PA) works when c2patool is installed.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -371,14 +434,20 @@ struct CheckView: View {
         }
     }
 
-    /// Bridges the completion-based NSItemProvider API into async/await.
+    /// Loads a dropped file URL reliably on every macOS version the app
+    /// supports.
     ///
-    /// A dropped file arrives as an NSURL in a non-sandboxed app (which
-    /// OriginCheck is), as security-scoped bookmark Data in a sandboxed app,
-    /// or rarely as a path string. Handle all three so a drop never silently
-    /// turns into "no file URLs".
+    /// `loadObject(ofClass: URL.self)` reads the public.file-url type
+    /// directly and is the API Apple recommends on macOS 13+; it handles the
+    /// common NSURL case. The fallback keeps the older bookmark-Data and
+    /// path-string cases working, because some drag sources (and sandboxed
+    /// apps) deliver the URL as security-scoped bookmark Data or as a raw
+    /// path. Both paths run off the main actor through async/await.
     private func loadFileURL(from provider: NSItemProvider) async -> URL? {
-        await withCheckedContinuation { continuation in
+        if let url = try? await provider.loadObject(ofClass: URL.self) {
+            return url
+        }
+        return await withCheckedContinuation { continuation in
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
                 let url: URL?
                 if let fileURL = item as? URL {

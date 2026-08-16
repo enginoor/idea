@@ -15,6 +15,20 @@ public enum Caveats {
         "A Claude watermark was detected with \(confidenceLabel) confidence. This means Claude likely processed this text; it is not proof of AI authorship."
     }
 
+    /// Caveat for a positive signal from the local statistical heuristic.
+    /// The heuristic is a pattern detector, not the released Anthropic
+    /// watermark detector, so the wording must not claim the watermark.
+    public static func textPositiveHeuristic(confidenceLabel: String) -> String {
+        "A statistical heuristic found AI-typical writing patterns with \(confidenceLabel) confidence. This is not Anthropic's watermark detector, which has not been released; treat it as a signal, not proof."
+    }
+
+    /// Caveat for a negative signal from the local statistical heuristic.
+    public static let textNegativeHeuristic =
+        "The local heuristic found no AI-typical patterns. This does not prove human authorship: it is a statistical assessment, not the official watermark detector."
+
+    public static let textInconclusive =
+        "The statistical signals did not resolve to a clear pattern. This is not proof either way."
+
     public static func fileValid(signer: String?, tool: String?) -> String {
         let signerName = signer ?? "an unknown entity"
         let toolName = tool ?? "an unknown tool"

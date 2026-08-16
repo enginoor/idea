@@ -29,10 +29,17 @@ struct VerdictDisplay {
     let confidenceValue: Double
     let evidence: [EvidenceItem]
     let caveat: String
+    /// The verified file's name, when this verdict came from a file check.
+    /// Shown as a header above the card so the result is never ambiguous
+    /// after a multi-file drop.
+    var fileName: String?
 
     /// A one-line summary for copying to the clipboard.
     var summaryText: String {
-        "\(title) - \(confidenceLabel) (\(confidenceValue.formatted(.percent.precision(.fractionLength(0))))) - \(detail)"
+        if let fileName {
+            return "\(title) - \(confidenceLabel) (\(confidenceValue.formatted(.percent.precision(.fractionLength(0))))) - \(fileName)"
+        }
+        return "\(title) - \(confidenceLabel) (\(confidenceValue.formatted(.percent.precision(.fractionLength(0))))) - \(detail)"
     }
 
     static func text(_ verdict: TextVerdict) -> VerdictDisplay {
@@ -42,13 +49,15 @@ struct VerdictDisplay {
         let icon: String
         switch verdict.kind {
         case .watermarked:
-            title = "Watermark detected"
-            detail = "A positive Claude watermark signal was found in the text."
+            // The local analyzer is a statistical heuristic, so the positive
+            // text verdict is described as a pattern, not as the watermark.
+            title = "AI-typical pattern detected"
+            detail = "The text's statistical shape (sentence-length uniformity and phrase repetition) resembles AI-generated prose."
             color = .green
             icon = "drop.fill"
         case .notWatermarked:
-            title = "No watermark detected"
-            detail = "No positive signal was found. This is not proof of human authorship."
+            title = "No AI-typical pattern"
+            detail = "The heuristic found no AI-typical statistical pattern. This is not proof of human authorship."
             color = .gray
             icon = "xmark.circle"
         case .insufficientInput:
@@ -127,7 +136,8 @@ struct VerdictDisplay {
             confidenceLabel: verdict.confidence.label.rawValue,
             confidenceValue: verdict.confidence.value,
             evidence: verdict.evidence,
-            caveat: verdict.caveatText
+            caveat: verdict.caveatText,
+            fileName: verdict.fileName
         )
     }
 }

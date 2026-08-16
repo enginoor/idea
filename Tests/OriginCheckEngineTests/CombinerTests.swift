@@ -98,6 +98,47 @@ struct CombinerTests {
     }
 
     @Test
+    func testInconclusiveProviderProducesInconclusiveVerdict() {
+        let verdict = VerdictCombiner().combineText(
+            results: [result("LocalAnalyzer", .inconclusive, confidence: 0.5)],
+            characterCount: 800,
+            providersRun: ["LocalAnalyzer"],
+            preset: .balanced
+        )
+        #expect(verdict.kind == .inconclusive)
+        #expect(verdict.caveatText == Caveats.textInconclusive)
+        #expect(!verdict.evidence.isEmpty)
+    }
+
+    @Test
+    func testInconclusiveProviderWinsOverUnavailableOne() {
+        let verdict = VerdictCombiner().combineText(
+            results: [
+                result("LocalAnalyzer", .inconclusive, confidence: 0.5),
+                result("AnthropicAPI", .unavailable, confidence: 0),
+            ],
+            characterCount: 800,
+            providersRun: ["LocalAnalyzer", "AnthropicAPI"],
+            preset: .balanced
+        )
+        #expect(verdict.kind == .inconclusive)
+    }
+
+    @Test
+    func testProviderCaveatIsPreferred() {
+        var provider = result("LocalAnalyzer", .detected, confidence: 0.8)
+        provider.caveatText = "Custom provider caveat."
+        let verdict = VerdictCombiner().combineText(
+            results: [provider],
+            characterCount: 800,
+            providersRun: ["LocalAnalyzer"],
+            preset: .balanced
+        )
+        #expect(verdict.kind == .watermarked)
+        #expect(verdict.caveatText == "Custom provider caveat.")
+    }
+
+    @Test
     func testAllProvidersUnavailableIsNotAvailable() {
         let verdict = VerdictCombiner().combineText(
             results: [

@@ -14,7 +14,10 @@ struct SettingsView: View {
         ScrollView {
             Form {
                 Section("Detection providers") {
-                    Toggle("Local analyzer", isOn: $appState.localAnalyzerEnabled)
+                    Toggle("Local statistical analyzer", isOn: $appState.localAnalyzerEnabled)
+                    Text("Scores text for AI-typical patterns: sentence-length uniformity and phrase repetition. This is a heuristic, not Anthropic's official watermark detector, which has not been released yet.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                     Toggle("Anthropic detection API", isOn: $appState.anthropicProviderEnabled)
                     if appState.anthropicProviderEnabled {
                         SecureField("API key", text: $keyText)
