@@ -1,9 +1,24 @@
 name: Release
 
+# Fully automatic: every code push to main becomes a release. The workflow
+# derives the next version from the commits since the last release tag
+# (patch by default; "feat"/"feature:" bumps minor; "BREAKING CHANGE" or
+# "!:" bumps major), builds, packages, signs, and publishes the DMG. Manual
+# releases still work by pushing a vX.Y.Z tag or running the workflow
+# manually with a version.
+#
+# The Release workflow's own appcast.xml commit back to main does not
+# re-trigger this workflow (paths-ignore), and doc/asset-only commits never
+# trigger it either. Tag pushes made by this workflow's GITHUB_TOKEN are not
+# a loop risk: the workflow publishes from the tag it already computed.
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    tags: ["v*"]
+    paths-ignore:
+      - "**.md"
+      - "appcast.xml"
+      - "assets/**"
   workflow_dispatch:
     inputs:
       version:
@@ -13,6 +28,12 @@ on:
 
 permissions:
   contents: write
+
+# One release flow at a time per ref: a second push queues behind the first
+# so the version is always computed from the freshest tags.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   test:
@@ -30,6 +51,10 @@ jobs:
   release:
     name: Build, package, sign, and publish
     needs: test
+    # The Release workflow's appcast commit is authored by the bot identity;
+    # never re-release it (paths-ignore is the primary guard; this is the
+    # backstop for commits that also touch code).
+    if: github.actor != 'github-actions[bot]'
     # macos-15, not macos-14: on macos-14 (Intel, Xcode 15.4) with the
     # swift.org 6.0.3 toolchain, `swift test` hangs inside xctest with no
     # output until the job timeout, which would block every release. The
@@ -53,8 +78,31 @@ jobs:
         run: |
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             VERSION="${{ github.event.inputs.version }}"
-          else
+          elif [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
+          else
+            # main push: derive the next version from the latest release tag
+            LAST_TAG="$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
+            if [[ -z "${LAST_TAG}" ]]; then
+              echo "No release tags yet; starting at 0.1.0"
+              VERSION="0.1.0"
+            else
+              PART="patch"
+              LOG="$(git log --format='%s' "${LAST_TAG}..HEAD" || true)"
+              if grep -qiE 'BREAKING CHANGE|^[^:]+!: ' <<< "${LOG}" || grep -qiE '^breaking' <<< "${LOG}"; then
+                PART="major"
+              elif grep -qiE '^(feat|feature)(\(|:| )' <<< "${LOG}"; then
+                PART="minor"
+              fi
+              IFS='.' read -r MAJOR MINOR PATCH <<< "${LAST_TAG#v}"
+              case "${PART}" in
+                major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+                minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+                *) PATCH=$((PATCH + 1)) ;;
+              esac
+              VERSION="${MAJOR}.${MINOR}.${PATCH}"
+              echo "Next version: ${VERSION} (${PART} bump since ${LAST_TAG})"
+            fi
           fi
           if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "error: invalid version '${VERSION}'" >&2

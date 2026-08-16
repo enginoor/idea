@@ -7,15 +7,15 @@ run them from the repository root.
 
 ## The short version
 
-Releases are automatic. Push code to `main`, and the Auto-release workflow
-waits for CI to pass, computes the next version (patch by default; `feat`
-or `feature:` commits bump minor; `BREAKING CHANGE` or `!:` bumps major),
-pushes the `vX.Y.Z` tag, and the Release workflow builds, signs, and
-publishes. No manual steps.
+Releases are automatic. Push code to `main`, and the Release workflow
+computes the next version itself (patch by default; `feat` or `feature:`
+commits bump minor; `BREAKING CHANGE` or `!:` bumps major), then builds,
+signs, and publishes. No manual steps.
 
 Docs-only commits (`*.md`, `assets/**`, `appcast.xml`) never trigger a
-release. The Release workflow's own appcast commit is skipped too, so the
-loop cannot repeat.
+release, and the Release workflow's own appcast commit is excluded by the
+same paths filter, so the loop cannot repeat. Manual releases still work:
+push a `vX.Y.Z` tag, or run the workflow manually with a version.
 
 Manual paths still exist for deliberate releases:
 
