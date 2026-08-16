@@ -69,8 +69,18 @@ fi
 # Sparkle must be embedded in the bundle, not merely linked at build time.
 SPARKLE="${APP}/Contents/Frameworks/Sparkle.framework"
 [[ -d "${SPARKLE}" ]] || fail "Sparkle.framework not embedded in Contents/Frameworks"
-[[ -x "${SPARKLE}/Versions/A/Sparkle" ]] || fail "Sparkle.framework executable missing"
-echo "Sparkle.framework embedded: ${SPARKLE}"
+# Sparkle 2.9.5 ships the framework with Versions/B and Current -> B;
+# older releases used Versions/A. Accept either so the validator does not
+# hardcode the framework's internal versioning.
+SPARKLE_BIN=""
+for V in A B; do
+  if [[ -x "${SPARKLE}/Versions/${V}/Sparkle" ]]; then
+    SPARKLE_BIN="${SPARKLE}/Versions/${V}/Sparkle"
+    break
+  fi
+done
+[[ -n "${SPARKLE_BIN}" ]] || fail "Sparkle.framework executable missing"
+echo "Sparkle.framework embedded: ${SPARKLE_BIN}"
 
 if command -v otool >/dev/null 2>&1; then
   otool -L "${BIN}" | grep -q "Sparkle.framework" \
