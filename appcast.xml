@@ -12,5 +12,5 @@
     <link>https://raw.githubusercontent.com/enginoor/idea/main/appcast.xml</link>
     <description>Update feed for OriginCheck, a macOS app that verifies Claude content provenance.</description>
     <language>en</language>
-  </channel>
+  <item><title>Version 0.1.1</title><pubDate>Sun, 16 Aug 2026 11:01:58 +0000</pubDate><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><enclosure url="https://github.com/enginoor/idea/releases/download/v0.1.1/OriginCheck-0.1.1.dmg" type="application/octet-stream" sparkle:version="20260816110000" sparkle:shortVersionString="0.1.1" sparkle:edSignature="GavmGs3dmHFp4lB7r3DUaqvjxyui7dYF599lPbOZObeGJ1Vp4LaMEyZfOVJnuA43yfI+8WvPZiGU+eTnoYLFAg==" length="1874960" /></item></channel>
 </rss>
