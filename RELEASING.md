@@ -127,6 +127,13 @@ user-initiated checks show an error.
 Sparkle update signatures are EdDSA (ed25519), completely separate from
 Apple code signing. The public key is committed; the private key is not.
 
+Note on key formats: Sparkle's sign_update reads the private key as base64
+of the raw 32-byte Ed25519 seed (the format generate_keys -x exports), not
+as PEM. The pipeline accepts either format in the SPARKLE_PRIVATE_KEY
+secret: Scripts/sign-update.sh auto-detects a PEM and converts it, which
+requires a full OpenSSL 3 (brew install openssl@3) on the signing machine
+(macOS's bundled LibreSSL cannot parse Ed25519 PEMs).
+
 Set up the keys once, on a Mac:
 
 ```bash

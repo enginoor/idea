@@ -47,8 +47,9 @@ jobs:
             exit 1
           fi
           umask 077
-          printf '%s\n' "${SPARKLE_PRIVATE_KEY}" > "${RUNNER_TEMP}/sparkle-private-key.pem"
-          trap 'rm -f "${RUNNER_TEMP}/sparkle-private-key.pem"' EXIT
+          KEY_FILE="${RUNNER_TEMP}/sparkle-private-key.pem"
+          printf '%s\n' "${SPARKLE_PRIVATE_KEY}" > "${KEY_FILE}"
+          trap 'rm -f "${KEY_FILE}" "${RUNNER_TEMP}/sparkle-private-key.seed"' EXIT
 
           OPENSSL="$(brew --prefix openssl@3)/bin/openssl"
           EXPECTED="$(tr -d '[:space:]' < Sparkle/public-key.txt)"
@@ -66,10 +67,21 @@ jobs:
           fi
           echo "The secret derives to the committed public key."
 
+          # sign_update reads the private key as base64 of the raw 32-byte
+          # Ed25519 seed, not as PEM. Convert PEM secrets here; a bare
+          # base64 seed passes through unchanged.
+          if grep -q -- '-----BEGIN' "${KEY_FILE}"; then
+            SEED_FILE="${RUNNER_TEMP}/sparkle-private-key.seed"
+            "${OPENSSL}" pkey -in "${KEY_FILE}" -outform DER 2>/dev/null \
+              | tail -c 32 | base64 | tr -d '\n' > "${SEED_FILE}"
+            [[ -s "${SEED_FILE}" ]] || { echo "error: the PEM did not decode to an Ed25519 seed." >&2; exit 1; }
+            KEY_FILE="${SEED_FILE}"
+          fi
+
           SIGN_UPDATE="$(find App/.build/artifacts -iname sign_update -path '*bin*' 2>/dev/null | head -1)"
           [[ -n "${SIGN_UPDATE}" ]] || { echo "error: sign_update not found" >&2; exit 1; }
           printf 'dummy archive for sparkle key verification' > "${RUNNER_TEMP}/verify.bin"
-          OUTPUT="$("${SIGN_UPDATE}" -f "${RUNNER_TEMP}/sparkle-private-key.pem" "${RUNNER_TEMP}/verify.bin")"
+          OUTPUT="$("${SIGN_UPDATE}" -f "${KEY_FILE}" "${RUNNER_TEMP}/verify.bin")"
           echo "${OUTPUT}"
           echo "${OUTPUT}" | grep -q 'sparkle:edSignature=' \
             || { echo "error: sign_update accepted the key but produced no signature." >&2; exit 1; }

@@ -73,6 +73,8 @@ Remaining steps:
 1. Copy the contents of ${KEY_FILE} into the repository secret
    SPARKLE_PRIVATE_KEY at Settings > Secrets and variables > Actions.
    (gh secret set requires admin access; without it, paste in the UI.)
+   The PEM is converted to Sparkle's native base64-seed format
+   automatically when signing (Scripts/sign-update.sh), so paste it as-is.
 2. Commit the public key above into Sparkle/public-key.txt.
 3. Keep the private key somewhere safe (a password manager) in case the
    secret is ever lost. If it is lost, rotate with the steps above.

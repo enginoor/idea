@@ -144,6 +144,10 @@ jobs:
             echo "error: the SPARKLE_PRIVATE_KEY secret is not set. Generate keys with bash Scripts/generate-sparkle-keys.sh and store the private key in the repository secrets." >&2
             exit 1
           fi
+          # sign-update.sh converts a PEM private key to Sparkle's native
+          # base64-seed format, which needs a full OpenSSL 3. macOS ships
+          # LibreSSL, which cannot parse Ed25519 PEMs.
+          brew install openssl@3 >/dev/null
           umask 077
           printf '%s\n' "${SPARKLE_PRIVATE_KEY}" > "${RUNNER_TEMP}/sparkle-private-key.pem"
           OUTPUT="$(bash Scripts/sign-update.sh "build/OriginCheck-${VERSION}.dmg" "${RUNNER_TEMP}/sparkle-private-key.pem")"
