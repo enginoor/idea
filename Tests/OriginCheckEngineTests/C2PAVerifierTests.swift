@@ -2,7 +2,12 @@ import Foundation
 import Testing
 @testable import OriginCheckEngine
 
-@Suite
+// These tests spawn the stub c2patool process, several of them with tight
+// timing (timeouts, parallel folder scans). Swift Testing runs suites and
+// tests in parallel by default, and concurrent process launches on Linux
+// intermittently fail the launch with NSCocoaErrorDomain 256. Serialize the
+// suite so the process runs never overlap each other.
+@Suite(.serialized)
 struct C2PAVerifierTests {
     private let stubToolURL: URL
     private let fixturesDir: URL

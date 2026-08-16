@@ -2,7 +2,11 @@ import Foundation
 import Testing
 @testable import OriginCheckEngine
 
-@Suite
+// Folder scans spawn the stub c2patool up to 8 processes at a time, and
+// concurrent process launches on Linux intermittently fail with
+// NSCocoaErrorDomain 256 under Swift Testing's default parallel execution.
+// Serialize the suite so its process runs never overlap.
+@Suite(.serialized)
 struct BatchVerifierTests {
     private let stubToolURL: URL
     private let fixturesDir: URL
