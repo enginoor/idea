@@ -2,6 +2,13 @@ name: CI
 
 on:
   push:
+    # main only: tag pushes (which the Auto-release workflow creates) and
+    # docs/appcast-only commits do not need a full CI run.
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "appcast.xml"
+      - "assets/**"
   pull_request:
   workflow_dispatch:
 

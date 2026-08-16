@@ -7,7 +7,17 @@ run them from the repository root.
 
 ## The short version
 
-Cut a release with one command:
+Releases are automatic. Push code to `main`, and the Auto-release workflow
+waits for CI to pass, computes the next version (patch by default; `feat`
+or `feature:` commits bump minor; `BREAKING CHANGE` or `!:` bumps major),
+pushes the `vX.Y.Z` tag, and the Release workflow builds, signs, and
+publishes. No manual steps.
+
+Docs-only commits (`*.md`, `assets/**`, `appcast.xml`) never trigger a
+release. The Release workflow's own appcast commit is skipped too, so the
+loop cannot repeat.
+
+Manual paths still exist for deliberate releases:
 
 ```bash
 bash Scripts/release.sh v1.2.0
@@ -25,7 +35,7 @@ git tag v1.2.0
 git push origin v1.2.0
 ```
 
-Both paths run the same Release workflow on macOS runners. The workflow is
+All paths run the same Release workflow on macOS runners. The workflow is
 the single publisher: it builds the production app, packages the .app,
 creates and validates the DMG, signs the DMG for Sparkle, updates the
 update feed, creates the GitHub Release with the DMG attached, and verifies

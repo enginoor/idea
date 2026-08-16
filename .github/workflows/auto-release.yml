@@ -1,0 +1,113 @@
+name: Auto-release
+
+# Cuts a release automatically whenever code lands on main: waits for CI to
+# pass on the exact commit, computes the next version from the commits since
+# the last tag, creates vX.Y.Z, and lets the Release workflow (which runs its
+# own test/build/DMG/signing gates before publishing) do the rest. No manual
+# steps are ever needed.
+on:
+  push:
+    branches: [main]
+    # A docs-only or appcast-only commit is not a release candidate; the
+    # Release workflow commits appcast.xml under the bot identity below,
+    # which is skipped anyway.
+    paths-ignore:
+      - "**.md"
+      - "appcast.xml"
+      - "assets/**"
+
+permissions:
+  contents: write
+
+# Only one release flow at a time. A second push queues behind the first so
+# the version is always computed from the freshest tags.
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  maybe-release:
+    name: Tag the next release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The Release workflow commits the updated appcast.xml to main under the
+    # github-actions[bot] identity; never re-release that commit.
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Wait for CI to pass on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 40); do
+            CONCLUSION="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${GITHUB_SHA}&event=push" \
+              --jq '[.workflow_runs[] | select(.name == "CI")][0].conclusion // empty' 2>/dev/null || true)"
+            case "${CONCLUSION}" in
+              success)
+                echo "CI passed on ${GITHUB_SHA}."
+                exit 0
+                ;;
+              failure|timed_out|action_required|cancelled)
+                echo "CI concluded '${CONCLUSION}' on ${GITHUB_SHA}; not releasing." >&2
+                exit 1
+                ;;
+            esac
+            sleep 15
+          done
+          echo "Timed out waiting for CI on ${GITHUB_SHA}; not releasing." >&2
+          exit 1
+
+      - name: Compute the next version
+        id: version
+        run: |
+          LAST_TAG="$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
+          if [[ -z "${LAST_TAG}" ]]; then
+            echo "No release tags yet; starting at 0.1.0"
+            echo "next=0.1.0" >> "${GITHUB_OUTPUT}"
+            echo "tag=v0.1.0" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          COUNT="$(git rev-list --count "${LAST_TAG}..HEAD")"
+          if [[ "${COUNT}" == "0" ]]; then
+            echo "Nothing new since ${LAST_TAG}; skipping."
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          PART="patch"
+          LOG="$(git log --format='%s' "${LAST_TAG}..HEAD")"
+          if grep -qiE 'BREAKING CHANGE|^[^:]+!: ' <<< "${LOG}" || grep -qiE '^breaking' <<< "${LOG}"; then
+            PART="major"
+          elif grep -qiE '^(feat|feature)(\(|:| )' <<< "${LOG}"; then
+            PART="minor"
+          fi
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${LAST_TAG#v}"
+          case "${PART}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            *) PATCH=$((PATCH + 1)) ;;
+          esac
+          echo "next=${MAJOR}.${MINOR}.${PATCH}" >> "${GITHUB_OUTPUT}"
+          echo "tag=v${MAJOR}.${MINOR}.${PATCH}" >> "${GITHUB_OUTPUT}"
+          echo "last=${LAST_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "part=${PART}" >> "${GITHUB_OUTPUT}"
+          echo "Next version: ${MAJOR}.${MINOR}.${PATCH} (${PART} bump since ${LAST_TAG})"
+
+      - name: Create and push the release tag
+        if: steps.version.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          NEXT="${{ steps.version.outputs.next }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "${TAG} already exists; skipping."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "OriginCheck ${NEXT}" "${GITHUB_SHA}"
+          git push origin "${TAG}"
+          echo "Pushed ${TAG}; the Release workflow will publish it."
