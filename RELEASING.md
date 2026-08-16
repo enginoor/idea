@@ -62,6 +62,15 @@ swift package resolve   # fetches the Sparkle binary artifact
 swift build -c release
 ```
 
+Note: use the release configuration. A debug build (`swift build` without
+`-c release`) crashes the swift.org 6.0.3 compiler in DWARF generation
+("Failed to reconstruct type", an upstream IRGen bug, swiftlang/swift
+#64565 family) on the `@Observable` + `@Environment(AppState.self)` view
+in the menu bar extra. Release builds emit no debug info, so they are
+unaffected. If you need a debuggable build, compile with
+`swift build -Xswiftc -gline-tables-only` to bypass the broken type
+reconstruction, or use a newer toolchain.
+
 Package the app bundle and validate it:
 
 ```bash
