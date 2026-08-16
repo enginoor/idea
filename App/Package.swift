@@ -32,6 +32,15 @@ let package = Package(
                 .product(name: "OriginCheckEngine", package: "idea"),
                 .product(name: "Sparkle", package: "Sparkle")
             ],
+            swiftSettings: [
+                // The swift.org 6.0.3 compiler crashes in IRGen ("Failed to
+                // reconstruct type") on the @State AppState property in the
+                // App struct's init when emitting DWARF debug info, which
+                // release builds on Apple platforms include. Disabling the
+                // debug-info round-trip check is the workaround the compiler
+                // itself suggests; it only skips a debug type validation.
+                .unsafeFlags(["-Xfrontend", "-disable-round-trip-debug-types"])
+            ],
             linkerSettings: [
                 // SwiftPM adds no embed step for binary frameworks (Xcode's
                 // "Embed & Sign" phase does that in Xcode projects). Without

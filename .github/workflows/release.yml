@@ -20,8 +20,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: swift-actions/setup-swift@v2
+      - uses: actions/checkout@v5
+      - uses: swift-actions/setup-swift@v2.4.0
         with:
           swift-version: "6.0.3"
       - name: Run the engine test suite
@@ -37,14 +37,14 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       # Pin the same 6.0.3 toolchain the Linux gate job uses so the build
       # is reproducible regardless of which Swift version the runner image
       # ships.
-      - uses: swift-actions/setup-swift@v2
+      - uses: swift-actions/setup-swift@v2.4.0
         with:
           swift-version: "6.0.3"
 
@@ -73,7 +73,7 @@ jobs:
       # Sparkle binary artifact every time.
       - name: Restore the Swift build caches
         id: cache-restore
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: |
             .build
@@ -94,7 +94,7 @@ jobs:
       # still leaves a warm cache for the next run.
       - name: Save the Swift build caches
         if: steps.cache-restore.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: |
             .build
