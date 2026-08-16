@@ -251,7 +251,8 @@ jobs:
           DMG="build/OriginCheck-${VERSION}.dmg"
           CHECKSUM="$(shasum -a 256 "${DMG}" | awk '{print $1}')"
           printf '%s  %s\n' "${CHECKSUM}" "OriginCheck-${VERSION}.dmg" > build/checksums.txt
-          shasum -a 256 -c build/checksums.txt
+          # The file lists bare filenames, so verify it from inside build/.
+          (cd build && shasum -a 256 -c checksums.txt)
           echo "checksum=${CHECKSUM}" >> "${GITHUB_OUTPUT}"
 
       - name: Write structured release notes

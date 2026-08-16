@@ -55,12 +55,21 @@ def main() -> None:
     if channel is None:
         raise SystemExit("appcast.xml has no <channel> element")
 
-    # Idempotency: never insert the same build twice.
+    # Idempotency: never insert the same build twice, and replace any prior
+    # entry for the same marketing version. A retried release rebuilds the
+    # DMG with a fresh build number and signature, so an old entry for the
+    # same version would point at the same download URL with a signature
+    # that no longer matches the published artifact.
     for item in channel.findall("item"):
         enclosure = item.find("enclosure")
-        if enclosure is not None and enclosure.get(sparkle_tag("version")) == build:
+        if enclosure is None:
+            continue
+        if enclosure.get(sparkle_tag("version")) == build:
             print(f"appcast entry for build {build} already exists; skipping")
             return
+        if enclosure.get(sparkle_tag("shortVersionString")) == version:
+            channel.remove(item)
+            print(f"removed stale appcast entry for version {version}")
 
     item = ET.Element("item")
 
