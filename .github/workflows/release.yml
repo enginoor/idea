@@ -30,16 +30,20 @@ jobs:
   release:
     name: Build, package, sign, and publish
     needs: test
-    runs-on: macos-14
+    # macos-15, not macos-14: on macos-14 (Intel, Xcode 15.4) with the
+    # swift.org 6.0.3 toolchain, `swift test` hangs inside xctest with no
+    # output until the job timeout, which would block every release. The
+    # same suite passes on macos-15.
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # The macos-14 image ships Swift 5.10, which cannot build this
-      # Swift 6.0 package, so install the same 6.0.3 toolchain the Linux
-      # gate job uses.
+      # Pin the same 6.0.3 toolchain the Linux gate job uses so the build
+      # is reproducible regardless of which Swift version the runner image
+      # ships.
       - uses: swift-actions/setup-swift@v2
         with:
           swift-version: "6.0.3"

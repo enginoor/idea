@@ -20,20 +20,14 @@ jobs:
 
   test-and-build-macos:
     name: Engine tests and app build (macOS)
-    # The app targets macOS 14, and building on the minimum supported OS
-    # catches accidental use of newer APIs. macos-14 is also a separate
-    # runner image from macos-15, so a degraded macos-15 image cannot
-    # silently take the whole pipeline down.
-    #
-    # The macos-14 image ships Swift 5.10, which cannot build a Swift 6.0
-    # tools-version package, so the Swift 6.0.3 toolchain is installed
-    # explicitly, matching the Linux job.
-    runs-on: macos-14
-    # Generous on purpose: on a cold runner, the Swift 6.0.3 toolchain
-    # download plus the engine build plus the app build took longer than
-    # the previous 15-minute bound, so GitHub cancelled the job mid-test
-    # and the macOS gate silently never ran. 30 minutes clears it with room
-    # to spare while still failing fast on a genuinely stuck job.
+    # Runs on macos-15 (Apple Silicon, Xcode 16). The macos-14 image
+    # (Intel, Xcode 15.4) requires a separate swift.org 6.0.3 toolchain, and
+    # in that combination `swift test` deterministically hangs inside xctest
+    # with no test output, cancelling the job at its timeout on every run.
+    # The same suite passed on macos-15, so the runner image is the variable.
+    # The minimum deployment target is still enforced by the package manifest
+    # (platforms: [.macOS(.v14)]), so the build gate is not weakened.
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
