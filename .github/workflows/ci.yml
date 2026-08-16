@@ -5,6 +5,12 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Newer pushes supersede older runs on the same branch, so a stale run never
+# keeps burning macOS runner time after a fix has already been pushed.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test-linux:
     name: Engine tests (Linux)
@@ -15,8 +21,25 @@ jobs:
       - uses: swift-actions/setup-swift@v2
         with:
           swift-version: "6.0.3"
+      # actions/cache compresses with zstd when it is installed, roughly
+      # halving the upload/restore time for the multi-hundred-MB .build dir.
+      - name: Install zstd for fast cache compression
+        run: sudo apt-get update -y && sudo apt-get install -y zstd
+      - name: Restore the Swift build cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: .build
+          key: swiftpm-linux-${{ github.sha }}
+          restore-keys: swiftpm-linux-
       - name: Run the engine test suite
         run: swift test
+      - name: Save the Swift build cache
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .build
+          key: swiftpm-linux-${{ github.sha }}
 
   test-and-build-macos:
     name: Engine tests and app build (macOS)
@@ -34,7 +57,31 @@ jobs:
       - uses: swift-actions/setup-swift@v2
         with:
           swift-version: "6.0.3"
+      - name: Install zstd for fast cache compression
+        run: command -v zstd >/dev/null 2>&1 || brew install zstd
+      # Cache the engine's .build (swift test) and the app's .build (the
+      # Sparkle binary artifact plus compiled modules) so a push right after a
+      # green run builds incrementally instead of from scratch. The key
+      # prefix is shared with the Release workflow, so a release reuses the
+      # freshest cache either run has saved.
+      - name: Restore the Swift build caches
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .build
+            App/.build
+          key: swiftpm-macos-${{ github.sha }}
+          restore-keys: swiftpm-macos-
       - name: Run the engine test suite
         run: swift test
       - name: Build the macOS app
         run: cd App && swift build
+      - name: Save the Swift build caches
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .build
+            App/.build
+          key: swiftpm-macos-${{ github.sha }}

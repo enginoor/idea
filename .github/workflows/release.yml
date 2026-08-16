@@ -65,6 +65,22 @@ jobs:
           echo "build=${BUILD_NUMBER}" >> "${GITHUB_OUTPUT}"
           echo "tag=v${VERSION}" >> "${GITHUB_OUTPUT}"
 
+      - name: Install zstd for fast cache compression
+        run: command -v zstd >/dev/null 2>&1 || brew install zstd
+
+      # Same cache keys as ci.yml, so a release reuses the freshest build
+      # from any CI run instead of cold-building Swift and re-downloading the
+      # Sparkle binary artifact every time.
+      - name: Restore the Swift build caches
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .build
+            App/.build
+          key: swiftpm-macos-${{ github.sha }}
+          restore-keys: swiftpm-macos-
+
       - name: Run the engine test suite on macOS
         run: swift test
 
@@ -73,6 +89,17 @@ jobs:
 
       - name: Build the app in release mode
         run: cd App && swift build -c release
+
+      # Save before the packaging steps so a later failure (DMG, signing, ...)
+      # still leaves a warm cache for the next run.
+      - name: Save the Swift build caches
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .build
+            App/.build
+          key: swiftpm-macos-${{ github.sha }}
 
       # Optional: dmgbuild produces the branded drag-to-install layout.
       # If it cannot be installed, make-dmg.sh falls back to a plain
