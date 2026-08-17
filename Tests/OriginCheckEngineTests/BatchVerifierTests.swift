@@ -164,20 +164,20 @@ struct BatchVerifierTests {
     }
 
     @Test
-    func testMissingToolFailsNonPNGFilesAndUsesBundledReaderForPNG() async throws {
-        // The bundled PNG reader keeps PNG files verifiable when c2patool is
-        // missing; every other format fails loudly. The two PNG fixtures
-        // carry no real manifest (they are dummy bytes), so they report a
-        // no-manifest verdict instead of failing.
+    func testMissingToolFailsUncoveredFormatsAndUsesBundledReaders() async throws {
+        // The bundled readers keep PNG, JPEG, SVG, and WebP verifiable when
+        // c2patool is missing; every other format fails loudly. The five
+        // covered fixtures carry no real manifest (they are dummy bytes), so
+        // they report a no-manifest verdict instead of failing.
         let root = try makeSampleFolder()
         let report = try await FolderVerifier(c2paToolPath: "/nonexistent/c2patool")
             .verifyDirectory(at: root)
 
         #expect(report.toolMissing)
         #expect(report.hasFailures)
-        #expect(report.summary.failed == 6, "6 non-PNG supported files fail without the tool")
-        #expect(report.verdicts.count == 2, "The 2 PNG files still get an honest verdict")
-        #expect(report.verdicts.allSatisfy { $0.format == "png" })
+        #expect(report.summary.failed == 3, "pdf, mov, and mp4 fail without the tool")
+        #expect(report.verdicts.count == 5, "png, png, webp, jpg, and svg get honest verdicts")
+        #expect(report.verdicts.allSatisfy { StandaloneC2PAReader.supportedExtensions.contains($0.format) })
         #expect(report.verdicts.allSatisfy { $0.kind == .notWatermarked })
         #expect(report.failures.allSatisfy { $0.reason.contains("Could not launch") })
     }

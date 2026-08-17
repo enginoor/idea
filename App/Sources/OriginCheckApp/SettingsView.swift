@@ -52,11 +52,11 @@ struct SettingsView: View {
                             .font(.caption)
                             .foregroundStyle(.green)
                     } else {
-                        Label("Tool not found. PNG files are still verified by the built-in reader; other formats need c2patool.", systemImage: "exclamationmark.triangle")
+                        Label("Tool not found. \(StandaloneC2PAReader.supportedDisplayNames) files are still verified by the built-in readers; other formats need c2patool.", systemImage: "exclamationmark.triangle")
                             .font(.caption)
                             .foregroundStyle(.orange)
                     }
-                    Text("Path to the c2patool binary, the reference C2PA tool. Leave as c2patool when it is on your PATH. Without it, PNG provenance (the most common AI-image format) is still verified by the built-in reader, though signatures cannot be validated without the tool.")
+                    Text("Path to the c2patool binary, the reference C2PA tool. Leave as c2patool when it is on your PATH. Without it, \(StandaloneC2PAReader.supportedDisplayNames) files are still verified by the built-in readers, though signatures cannot be validated without the tool.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

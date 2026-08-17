@@ -104,10 +104,10 @@ struct PNGC2PAReaderTests {
         let verifier = C2PAVerifier(toolPath: "/nonexistent/c2patool", bundledReaderEnabled: true)
         let verdict = try await verifier.verifyFile(at: url)
         #expect(verdict.manifestPresent)
-        #expect(verdict.signatureValid == nil, "The built-in reader cannot validate signatures")
+        #expect(verdict.signatureValid == nil, "No signature data means unverifiable, not verified")
         #expect(verdict.kind == .inconclusive)
         #expect(verdict.softwareAgent == "Claude")
-        #expect(verdict.evidence.contains { $0.summary.contains("built-in PNG reader") })
+        #expect(verdict.evidence.contains { $0.summary.contains("the built-in reader") })
     }
 
     @Test

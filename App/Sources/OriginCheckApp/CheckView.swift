@@ -308,7 +308,7 @@ struct CheckView: View {
                     title: "File provenance (C2PA)",
                     detail: AppState.toolIsReachable(appState.c2paToolPath)
                         ? "Ready. Drop a file or choose one to verify its signed metadata."
-                        : "PNG files work out of the box. Other formats need c2patool; install it once with cargo install c2patool, then set the path in Settings.",
+                        : "\(StandaloneC2PAReader.supportedDisplayNames) files work out of the box. Other formats need c2patool; install it once with cargo install c2patool, then set the path in Settings.",
                     color: .green
                 )
             }
@@ -348,7 +348,7 @@ struct CheckView: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "info.circle")
                 .foregroundStyle(.secondary)
-            Text("Text checks run entirely on this Mac: the local detector fuses sentence rhythm, vocabulary, and phrasing patterns that appear across AI-generated prose (ChatGPT, Claude, Gemini, and others). It is a heuristic, not an official watermark detector, so treat results as a signal, not proof. File checks work out of the box for PNG; other formats use c2patool when installed.")
+            Text("Text checks run entirely on this Mac: the local detector fuses sentence rhythm, vocabulary, and phrasing patterns that appear across AI-generated prose (ChatGPT, Claude, Gemini, and others). It is a heuristic, not an official watermark detector, so treat results as a signal, not proof. File checks work out of the box for \(StandaloneC2PAReader.supportedDisplayNames); other formats use c2patool when installed.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -361,7 +361,7 @@ struct CheckView: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .foregroundStyle(.orange)
-            Text("c2patool is not reachable at \"\(appState.c2paToolPath)\". PNG files are still verified by the built-in reader; other formats need the tool. Install it once with \u{201C}cargo install c2patool\u{201D} or set the path in Settings.")
+            Text("c2patool is not reachable at \"\(appState.c2paToolPath)\". \(StandaloneC2PAReader.supportedDisplayNames) files are still verified by the built-in readers; other formats need the tool. Install it once with \u{201C}cargo install c2patool\u{201D} or set the path in Settings.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -456,9 +456,21 @@ struct CheckView: View {
     /// apps) deliver the URL as security-scoped bookmark Data or as a raw
     /// path. Both paths run off the main actor through async/await.
     private func loadFileURL(from provider: NSItemProvider) async -> URL? {
-        if let url = try? await provider.loadObject(ofClass: URL.self) {
-            return url
+        // The async/await overload of loadObject(ofClass:) is not present in
+        // every SDK this package is built against, so the completion-handler
+        // form is bridged through a continuation instead. This path handles
+        // the common NSURL case Finder delivers in a non-sandboxed app.
+        let objectURL: URL? = await withCheckedContinuation { continuation in
+            _ = provider.loadObject(ofClass: URL.self) { object, _ in
+                continuation.resume(returning: object as? URL)
+            }
         }
+        if objectURL != nil {
+            return objectURL
+        }
+        // Fallback for bookmark-Data and path-string drag sources: some drag
+        // sources (and sandboxed apps) deliver the URL as security-scoped
+        // bookmark Data or as a raw path.
         return await withCheckedContinuation { continuation in
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
                 let url: URL?

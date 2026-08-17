@@ -29,3 +29,6 @@ __pycache__/
 Sparkle/*.pem
 Sparkle/private-key*
 Sparkle/*-export*
+
+# Core dumps from crash repros in the sandbox
+core

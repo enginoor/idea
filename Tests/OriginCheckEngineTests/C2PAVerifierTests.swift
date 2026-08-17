@@ -174,12 +174,13 @@ struct C2PAVerifierTests {
 
     @Test
     func testMissingToolThrowsToolUnavailable() async throws {
-        // A non-PNG format still needs the tool: only PNG files are covered
-        // by the built-in reader, so a missing tool must fail loudly instead
-        // of silently producing a bogus verdict.
+        // A format the built-in readers do not cover still needs the tool:
+        // only PNG, JPEG, SVG, and WebP are read without c2patool, so a
+        // missing tool must fail loudly instead of silently producing a
+        // bogus verdict for everything else.
         let verifier = C2PAVerifier(toolPath: "/nonexistent/c2patool")
         do {
-            _ = try await verifier.verifyFile(at: makeDummyFile(named: "chart-intact.jpg"))
+            _ = try await verifier.verifyFile(at: makeDummyFile(named: "motion-intact.mp4"))
             Issue.record("Expected toolUnavailable error")
         } catch let error as C2PAVerifier.VerificationError {
             if case .toolUnavailable = error {

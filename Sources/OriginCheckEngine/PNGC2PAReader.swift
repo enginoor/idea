@@ -28,6 +28,13 @@ public struct PNGC2PAReader: Sendable {
     /// Returns the manifest store JSON found in the file, or nil when the
     /// file is not a PNG or carries no readable `c2pa` iTXt chunk.
     public func extractManifestStoreJSON(at url: URL) throws -> String? {
+        try extractManifest(at: url)?.storeJSON
+    }
+
+    /// Returns the manifest store JSON and the JUMBF bytes it was found in.
+    /// The JUMBF bytes let the signature validator reach the claim and
+    /// signature boxes that sit alongside the store JSON box.
+    public func extractManifest(at url: URL) throws -> C2PAManifest? {
         let data: Data
         do {
             data = try Data(contentsOf: url)
@@ -48,9 +55,9 @@ public struct PNGC2PAReader: Sendable {
             if type == "iTXt",
                let text = Self.parseITXtText(Array(bytes[chunkStart..<chunkEnd]), keyword: "c2pa"),
                let decoded = Data(base64Encoded: text.filter { !$0.isWhitespace }),
-               let json = Self.findManifestStoreJSON(in: decoded),
+               let json = JUMBFScanner.findManifestStoreJSON(in: decoded),
                let string = String(data: json, encoding: .utf8) {
-                return string
+                return C2PAManifest(storeJSON: string, jumbfData: decoded)
             }
 
             if type == "IEND" { break }
@@ -92,60 +99,7 @@ public struct PNGC2PAReader: Sendable {
         return String(bytes: textBytes, encoding: .utf8)
     }
 
-    // MARK: - JUMBF scanning
-
-    /// Recursively walks JUMBF boxes and returns the first payload that
-    /// decodes as a C2PA manifest store (JSON containing "manifests" or
-    /// "active_manifest"). Tolerant by design: anything it cannot parse is
-    /// skipped, and the verdict falls back to "no manifest" rather than
-    /// guessing.
-    static func findManifestStoreJSON(in data: Data) -> Data? {
-        if Self.looksLikeManifestStore(data) { return data }
-
-        let bytes = [UInt8](data)
-        var offset = 0
-        while offset + 8 <= bytes.count {
-            let size32 = Self.readUInt32(bytes, offset)
-            var payloadStart = offset + 8
-            var payloadEnd: Int
-            var boxSize: Int
-
-            if size32 == 1 {
-                // 64-bit extended size: 4-byte size marker + 8-byte size.
-                guard offset + 16 <= bytes.count else { break }
-                let size64 = Self.readUInt64(bytes, offset + 8)
-                guard size64 <= UInt64(bytes.count) else { break }
-                payloadStart = offset + 16
-                boxSize = Int(size64)
-            } else if size32 == 0 {
-                boxSize = bytes.count - offset
-            } else {
-                boxSize = Int(size32)
-            }
-            guard boxSize >= 8 else { break }
-            payloadEnd = offset + boxSize
-            guard payloadEnd >= payloadStart, payloadEnd <= bytes.count else { break }
-
-            if let found = findManifestStoreJSON(in: Data(bytes[payloadStart..<payloadEnd])) {
-                return found
-            }
-            if size32 == 0 { break }
-            offset = payloadEnd
-        }
-        return nil
-    }
-
-    static func looksLikeManifestStore(_ data: Data) -> Bool {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return false
-        }
-        if let manifests = object["manifests"] as? [String: Any], !manifests.isEmpty {
-            return true
-        }
-        return object["active_manifest"] != nil
-    }
-
-    // MARK: - Byte helpers (big-endian)
+    // MARK: - PNG chunk parsing helpers
 
     static func readUInt32(_ bytes: [UInt8], _ offset: Int) -> UInt32 {
         guard offset + 4 <= bytes.count else { return 0 }
@@ -153,14 +107,6 @@ public struct PNGC2PAReader: Sendable {
             | UInt32(bytes[offset + 1]) << 16
             | UInt32(bytes[offset + 2]) << 8
             | UInt32(bytes[offset + 3])
-    }
-
-    static func readUInt64(_ bytes: [UInt8], _ offset: Int) -> UInt64 {
-        var value: UInt64 = 0
-        for index in 0..<8 where offset + index < bytes.count {
-            value = (value << 8) | UInt64(bytes[offset + index])
-        }
-        return value
     }
 
     static func readType(_ bytes: [UInt8], _ offset: Int) -> String {

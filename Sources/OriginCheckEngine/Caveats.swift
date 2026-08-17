@@ -34,7 +34,6 @@ public enum Caveats {
         let toolName = tool ?? "an unknown tool"
         return "This file was signed by \(signerName) using \(toolName). It has not been modified since signing."
     }
-
     public static func fileModified(tool: String?) -> String {
         let toolName = tool ?? "the signer"
         return "This file was modified after \(toolName) processed it."

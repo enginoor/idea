@@ -19,10 +19,13 @@ public struct C2PAVerifier: Sendable {
     /// the app stuck in an analyzing state forever.
     public let timeout: TimeInterval
 
-    /// When true (default), PNG files are verified by the built-in reader
-    /// when c2patool is not installed, so file provenance works out of the
-    /// box. The tool still wins when it is available because it can validate
-    /// signatures, which the built-in reader cannot.
+    /// When true (default), PNG, JPEG, SVG, and WebP files are verified by
+    /// the built-in readers when c2patool is not installed, so provenance
+    /// works out of the box for the most common formats. The built-in path
+    /// reads the signing certificate and algorithm from the embedded
+    /// signature; the tool still wins when it is available because it
+    /// validates the signature math, certificate chains, and content hashes,
+    /// which the built-in verifier does not.
     public let bundledReaderEnabled: Bool
 
     public init(
@@ -62,11 +65,14 @@ public struct C2PAVerifier: Sendable {
         let fileName = url.lastPathComponent
         let format = url.pathExtension.lowercased()
 
-        // Self-contained path: when c2patool is missing, PNG files are still
-        // checked by the built-in reader, so the app works out of the box
-        // for the most common AI-image format. The reader cannot validate
-        // the signature, and the verdict says so.
-        if bundledReaderEnabled, format == "png", !Self.toolIsReachable(toolPath) {
+        // Self-contained path: when c2patool is missing, the formats the
+        // built-in readers cover are still checked, so the app works out of
+        // the box for the most common AI-image formats (PNG, JPEG, SVG, and
+        // WebP). The signer identity is read from the embedded signature;
+        // the signature math, certificate chain trust, and content hashes
+        // are not checked, and the verdict says so.
+        if bundledReaderEnabled, StandaloneC2PAReader.supportedExtensions.contains(format),
+           !Self.toolIsReachable(toolPath) {
             return try await bundledVerdict(for: url, fileName: fileName, format: format)
         }
 
@@ -100,9 +106,11 @@ public struct C2PAVerifier: Sendable {
         )
     }
 
-    /// The no-tool-needed PNG path. Provenance presence, the generating
-    /// tool, and claims are read from the manifest store; the signature is
-    /// reported as unverifiable because validating it needs the tool.
+    /// The no-tool-needed path. Provenance presence, the generating tool,
+    /// and claims are read from the manifest store; the signing certificate
+    /// and algorithm are read from the embedded signature. Signature math,
+    /// certificate chain trust, and the file content hash are not checked,
+    /// and the verdict says so.
     private func bundledVerdict(
         for url: URL,
         fileName: String,
@@ -114,26 +122,31 @@ public struct C2PAVerifier: Sendable {
             exitCode: 0
         )
         guard
-            let json = try? PNGC2PAReader().extractManifestStoreJSON(at: url),
-            let data = json.data(using: .utf8),
+            let manifest = try? StandaloneC2PAReader().extractManifest(at: url),
+            let data = manifest.storeJSON.data(using: .utf8),
             let envelope = try? JSONDecoder().decode(ManifestEnvelope.self, from: data),
-            let manifest = envelope.activeManifestEntry ?? envelope.manifests?.values.first
+            let entry = envelope.activeManifestEntry ?? envelope.manifests?.values.first
         else {
             return noManifestVerdict(
                 fileName: fileName,
                 format: format,
                 toolOutput: toolOutput,
-                verifierDescription: "the built-in PNG reader (no c2patool needed)"
+                verifierDescription: "the built-in reader (no c2patool needed)"
             )
         }
+        let signatureInfo = C2PASignatureReader().read(
+            storeJSON: manifest.storeJSON,
+            jumbfData: manifest.jumbfData
+        )
         return verdict(
             for: url,
             envelope: envelope,
-            manifest: manifest,
+            manifest: entry,
             fileName: fileName,
             format: format,
             toolOutput: toolOutput,
-            verifierDescription: "the built-in PNG reader (no c2patool needed)"
+            verifierDescription: "the built-in reader (no c2patool needed)",
+            bundledSignatureInfo: signatureInfo
         )
     }
 
@@ -233,7 +246,8 @@ public struct C2PAVerifier: Sendable {
         fileName: String,
         format: String,
         toolOutput: ToolOutput,
-        verifierDescription: String
+        verifierDescription: String,
+        bundledSignatureInfo: C2PASignatureInfo? = nil
     ) -> FileVerdict {
         var evidence: [EvidenceItem] = [
             EvidenceItem(
@@ -250,7 +264,10 @@ public struct C2PAVerifier: Sendable {
             ),
         ]
 
-        let signer = displayName(from: manifest.signature_info?.issuer)
+        var signer = displayName(from: manifest.signature_info?.issuer)
+        if let bundledSigner = bundledSignatureInfo?.signer, !bundledSigner.isEmpty {
+            signer = bundledSigner
+        }
         let softwareAgent = softwareAgentName(from: manifest)
         let signatureValid = signatureState(manifest.validation_status)
         let modified = modificationState(manifest.validation_status, signatureValid: signatureValid)
@@ -262,7 +279,9 @@ public struct C2PAVerifier: Sendable {
         if let softwareAgent {
             evidence.append(EvidenceItem(source: "C2PA", kind: "software_agent", summary: "Processing tool: \(softwareAgent)."))
         }
-        if let signatureValid {
+        if let bundledSignatureInfo {
+            appendBundledSignatureEvidence(bundledSignatureInfo, to: &evidence)
+        } else if let signatureValid {
             evidence.append(EvidenceItem(
                 source: "C2PA",
                 kind: "signature_validity",
@@ -332,6 +351,47 @@ public struct C2PAVerifier: Sendable {
             evidence: evidence,
             caveatText: caveat
         )
+    }
+
+    private func appendBundledSignatureEvidence(
+        _ info: C2PASignatureInfo,
+        to evidence: inout [EvidenceItem]
+    ) {
+        if info.present {
+            var summary = "The manifest carries a signature"
+            if let signer = info.signer {
+                summary += " issued to \(signer)"
+            }
+            summary += "."
+            var detail = "Algorithm: \(info.algorithm ?? "unknown")."
+            if let issuer = info.issuer {
+                detail += " Issuer: \(issuer)."
+            }
+            if let notAfter = info.certNotAfter {
+                detail += " Certificate valid until \(Self.shortDate(notAfter))."
+            }
+            detail += " The signature math is not verified without c2patool."
+            evidence.append(EvidenceItem(
+                source: "C2PA",
+                kind: "signature_present",
+                summary: summary,
+                detail: detail
+            ))
+        } else {
+            evidence.append(EvidenceItem(
+                source: "C2PA",
+                kind: "signature_unverifiable",
+                summary: "No signature data was found in the manifest.",
+                detail: "The manifest exists but carries no readable COSE signature."
+            ))
+        }
+    }
+
+    private static func shortDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        return formatter.string(from: date)
     }
 
     private func noManifestVerdict(
