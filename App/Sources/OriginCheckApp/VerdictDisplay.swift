@@ -117,6 +117,15 @@ struct VerdictDisplay {
             detail = "The manifest is valid but the file no longer matches the signed content."
             color = .red
             icon = "exclamationmark.triangle.fill"
+        } else if verdict.manifestPresent, verdict.signatureValid == true, verdict.modifiedSinceSigning == nil {
+            // The built-in verifier proved the claim signature but could not
+            // recompute the file content hash, so "intact" would overstate
+            // what was checked.
+            title = "Signature verified"
+            detail = (verdict.signer.map { "The provenance claim was signed by \($0) and the Ed25519 signature verifies." }
+                ?? "The provenance claim's Ed25519 signature verifies.")
+            color = .yellow
+            icon = "checkmark.seal"
         } else if verdict.manifestPresent, verdict.signatureValid == true {
             title = "Signed, intact"
             detail = verdict.signer.map { "Signed by \($0)." } ?? "Signed by an unknown entity."

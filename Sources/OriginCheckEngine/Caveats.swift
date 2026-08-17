@@ -34,6 +34,15 @@ public enum Caveats {
         let toolName = tool ?? "an unknown tool"
         return "This file was signed by \(signerName) using \(toolName). It has not been modified since signing."
     }
+
+    /// Used by the built-in verifier when it proved the claim signature but
+    /// could not recompute the file content hash: the claim is authentic,
+    /// but the file itself may have changed since signing.
+    public static func fileValidClaimOnly(signer: String?, tool: String?) -> String {
+        let signerName = signer ?? "an unknown entity"
+        let toolName = tool ?? "an unknown tool"
+        return "The embedded provenance claim was signed by \(signerName) using \(toolName), and the Ed25519 signature verifies. The file's content hash is not checked without c2patool, so the file may have changed since signing."
+    }
     public static func fileModified(tool: String?) -> String {
         let toolName = tool ?? "the signer"
         return "This file was modified after \(toolName) processed it."

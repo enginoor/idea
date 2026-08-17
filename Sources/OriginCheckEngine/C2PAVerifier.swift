@@ -152,7 +152,26 @@ public struct C2PAVerifier: Sendable {
 
     // MARK: - Tool execution
 
+    /// Runs the tool, retrying the launch once. Concurrent process launches
+    /// on Linux can transiently fail with an EAGAIN-class error (Foundation
+    /// reports it as NSCocoaErrorDomain 256), which would otherwise turn a
+    /// working check into a false tool-missing verdict. A genuinely bad tool
+    /// path fails both attempts and surfaces the error; a tool that starts
+    /// but times out is never retried.
     private func runTool(arguments: [String]) async throws -> ToolOutput {
+        do {
+            return try await runToolOnce(arguments: arguments)
+        } catch let error as VerificationError {
+            if case .toolUnavailable = error {
+                try await Task.sleep(nanoseconds: 50_000_000)
+                return try await runToolOnce(arguments: arguments)
+            }
+            throw error
+        }
+    }
+
+    /// Runs the tool exactly once.
+    private func runToolOnce(arguments: [String]) async throws -> ToolOutput {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: toolPath)
         process.arguments = arguments
@@ -269,7 +288,15 @@ public struct C2PAVerifier: Sendable {
             signer = bundledSigner
         }
         let softwareAgent = softwareAgentName(from: manifest)
-        let signatureValid = signatureState(manifest.validation_status)
+        // The bundled path verifies the Ed25519 claim signature itself when
+        // it can; the tool path reads the validation status c2patool
+        // reported. Either way the verdict sees one truth value.
+        let signatureValid: Bool?
+        if let bundled = bundledSignatureInfo?.signatureValid {
+            signatureValid = bundled
+        } else {
+            signatureValid = signatureState(manifest.validation_status)
+        }
         let modified = modificationState(manifest.validation_status, signatureValid: signatureValid)
         let claims = claims(from: manifest, signer: signer)
 
@@ -331,6 +358,11 @@ public struct C2PAVerifier: Sendable {
         let caveat: String
         if signatureValid == true && modified == true {
             caveat = Caveats.fileModified(tool: softwareAgent)
+        } else if signatureValid == true, bundledSignatureInfo != nil, modified == nil {
+            // The bundled verifier proved the claim signature but cannot
+            // recompute the file content hash, so the wording must not
+            // claim the file is unchanged since signing.
+            caveat = Caveats.fileValidClaimOnly(signer: signer, tool: softwareAgent)
         } else if signatureValid == true {
             caveat = Caveats.fileValid(signer: signer, tool: softwareAgent)
         } else {
@@ -370,7 +402,13 @@ public struct C2PAVerifier: Sendable {
             if let notAfter = info.certNotAfter {
                 detail += " Certificate valid until \(Self.shortDate(notAfter))."
             }
-            detail += " The signature math is not verified without c2patool."
+            if let valid = info.signatureValid {
+                detail += valid
+                    ? " The Ed25519 claim signature verifies with the built-in verifier. The file content hash and certificate chain are not checked without c2patool."
+                    : " The Ed25519 claim signature did not verify with the built-in verifier."
+            } else {
+                detail += " This signature could not be verified with the built-in verifier (unsupported algorithm or missing certificate)."
+            }
             evidence.append(EvidenceItem(
                 source: "C2PA",
                 kind: "signature_present",

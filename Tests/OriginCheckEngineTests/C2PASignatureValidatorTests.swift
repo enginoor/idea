@@ -191,7 +191,7 @@ struct C2PASignatureValidatorTests {
         #expect(verdict.kind == .inconclusive)
         #expect(verdict.signer == "Claude Test Signer")
         #expect(verdict.evidence.contains { $0.summary.contains("carries a signature") })
-        #expect(verdict.evidence.contains { $0.detail.contains("not verified without c2patool") })
+        #expect(verdict.evidence.contains { $0.detail.contains("could not be verified") })
     }
 
     @Test

@@ -6,6 +6,14 @@ Update this file after every prompt so it acts as memory.
 
 ## Session log
 
+### 2026-08-17: Ed25519 claim-signature verification in pure Swift, test race fixed
+
+- Owner said continue. The in-progress work from the previous turn was a pure-Swift Ed25519 verifier for C2PA claim signatures: new `Ed25519` (RFC 8032 verify-only, 5-limb 51-bit field, canonical-S check) and `SHA512` (incremental), plus `C2PASignatureReader` changes to parse COSE_Sign1 fully (protected/unprotected headers, x5chain leaf cert, Ed25519 SPKI key) and verify the Sig_structure. `C2PASignatureInfo.signatureValid` is Bool? with nil = cannot verify. `C2PAVerifier` prefers the bundled verification state when the tool is missing; `Caveats.fileValidClaimOnly` and a yellow "Signature verified" verdict state (VerdictDisplay) keep the content-hash and chain-trust limits honest.
+- Found and fixed the failure: the new `C2PACOSESignatureTests` were flaky under Swift Testing's parallel execution because `writePNG` had an escaped `\(UUID().uuidString)` (a double backslash in the source), so every test wrote the SAME literal temp path and clobbered the others. Serial runs dodged it; parallel runs produced swapped verdicts. The interpolation is now real and the suite is stable (5 consecutive full parallel runs green). Removed the diagnostic prints and deleted the no-assertion ScratchDebugTests.swift, whose coverage was fully duplicated.
+- The old `C2PASignatureValidatorTests` fixture puts x5chain in the PROTECTED header; the new parseSign1 only read the unprotected map, so signer/issuer/validity came back nil. Restored the old tolerance: x5chain is read from unprotected first, then protected. Updated one evidence-wording assertion to the new "could not be verified" wording.
+- Hardened the tool launch: concurrent process launches on Linux intermittently fail with NSCocoaErrorDomain 256 (the documented flake that led to serializing C2PAVerifierTests and BatchVerifierTests). Cross-suite overlap can still race, so `C2PAVerifier.runTool` now retries the launch once with a 50 ms backoff before reporting toolUnavailable; a genuinely bad path still fails, and a started-but-stuck tool is never retried. This is also a product win: folder scans already spawn up to 8 tools at once.
+- Verified: engine suite 124/124 on Linux Swift 6.0.3 across 5 parallel runs, app files parse clean (VerdictDisplay.swift), no em/en dashes and no banned words in the changed files. Committed and pushed to main.
+
 ### 2026-08-17: Multi-model standalone detector, bundled detection data, PNG verification without c2patool
 
 - Owner said: not only Claude but whole AI detection, a fully standalone app (no packages to install), and a heavier app with real architecture. Researched the current AI-detection landscape (GPTZero-class perplexity + burstiness + repetition; 2026 detectors still rate these as the core statistical signals across ChatGPT/Claude/Gemini/Llama).
