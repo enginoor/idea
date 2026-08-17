@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "description": "Deliberately AI-typical sample passages bundled with the app. Each shows the statistical shape the detector looks for: uniform sentence lengths, common vocabulary, and repeated model-family phrases. Loaded from the bundle so the app needs no network access.",
+  "passages": [
+    {
+      "id": "chatgpt",
+      "title": "ChatGPT-style sample",
+      "text": "In today's fast-paced world, effective communication matters more than ever before. Whether you're a student, a professional, or an entrepreneur, clear writing can open new doors. This comprehensive guide will walk you through the essential steps to improve your skills. First and foremost, you need to understand your audience and their core needs. Let's dive into the practical strategies that actually deliver measurable results. Moreover, consistency is the key to building lasting habits that stick. In conclusion, the journey requires patience, practice, and a positive mindset. The bottom line is that anyone can improve with the right approach."
+    },
+    {
+      "id": "claude",
+      "title": "Claude-style sample",
+      "text": "It's worth noting that the distinction is more nuanced than it first appears. In practice, the tradeoff depends on the specific context and constraints involved. That said, there are a few general principles that hold up well across cases. The key insight is that tradeoffs should be evaluated relative to the goals at hand. For context, consider how the same decision plays out in different settings. By comparison, the alternative approach carries its own hidden costs. At its core, the question is about priorities rather than absolutes. Ultimately, the answer is rarely simple, and that is the honest takeaway."
+    },
+    {
+      "id": "gemini",
+      "title": "Gemini-style sample",
+      "text": "Let's be honest, the whole thing is simpler than people make it out to be. Here's the deal: most of the confusion comes from overcomplicating the basics. The truth is, the fundamentals have not changed in years. So there you have it, the plain and simple version of the story. At the end of the day, it comes down to a few key decisions. To be honest, once you see the pattern, it clicks immediately. The bottom line is that clarity beats cleverness every single time. In all honesty, that is all there is to it."
+    }
+  ]
+}

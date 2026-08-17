@@ -68,6 +68,35 @@ struct LocalAnalyzerTests {
     }
 
     @Test
+    func testBundledSamplePassagesAllScoreAsDetected() async throws {
+        let passages = try BundledResources.samplePassages()
+        #expect(passages.count >= 3)
+        for passage in passages {
+            let result = try await LocalStatisticalAnalyzer().analyze(passage.text, options: options)
+            #expect(result.signal == .detected, "Bundled \(passage.id) sample should read as AI-typical, got \(result.signal)")
+            #expect(result.confidence.label != .high)
+        }
+    }
+
+    @Test
+    func testSamplePassagesProduceFamilyHints() async throws {
+        let passages = try BundledResources.samplePassages()
+        let chatgpt = try #require(passages.first { $0.id == "chatgpt" })
+        let result = try await LocalStatisticalAnalyzer().analyze(chatgpt.text, options: options)
+        let families = result.familyHints.map(\.family)
+        #expect(families.contains(.chatgpt))
+        #expect(!result.familyHints.isEmpty)
+        #expect(result.evidence.contains { $0.kind == "perplexity" })
+        #expect(result.evidence.contains { $0.kind == "ai_phrasing" })
+    }
+
+    @Test
+    func testHumanFixtureProducesNoFamilyHints() async throws {
+        let result = try await LocalStatisticalAnalyzer().analyze(humanTypicalText, options: options)
+        #expect(result.familyHints.isEmpty)
+    }
+
+    @Test
     func testDecimalPointDoesNotSplitSentence() {
         let sentences = TextStatistics.splitSentencesForTesting("The value is 3.14 and it matters. Next one.")
         #expect(sentences.count == 2)

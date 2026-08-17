@@ -33,13 +33,23 @@ struct VerdictDisplay {
     /// Shown as a header above the card so the result is never ambiguous
     /// after a multi-file drop.
     var fileName: String?
+    /// Soft style attributions (Claude-style, ChatGPT-style, Gemini-style)
+    /// from the phrase pattern database. Rendered as chips on the card.
+    var familyHints: [ModelFamilyHint]
 
     /// A one-line summary for copying to the clipboard.
     var summaryText: String {
+        let base: String
         if let fileName {
-            return "\(title) - \(confidenceLabel) (\(confidenceValue.formatted(.percent.precision(.fractionLength(0))))) - \(fileName)"
+            base = "\(title) - \(confidenceLabel) (\(confidenceValue.formatted(.percent.precision(.fractionLength(0))))) - \(fileName)"
+        } else {
+            base = "\(title) - \(confidenceLabel) (\(confidenceValue.formatted(.percent.precision(.fractionLength(0))))) - \(detail)"
         }
-        return "\(title) - \(confidenceLabel) (\(confidenceValue.formatted(.percent.precision(.fractionLength(0))))) - \(detail)"
+        if !familyHints.isEmpty {
+            let families = familyHints.map { $0.family.displayName }.joined(separator: ", ")
+            return "\(base) - Style hints: \(families)"
+        }
+        return base
     }
 
     static func text(_ verdict: TextVerdict) -> VerdictDisplay {
@@ -52,12 +62,12 @@ struct VerdictDisplay {
             // The local analyzer is a statistical heuristic, so the positive
             // text verdict is described as a pattern, not as the watermark.
             title = "AI-typical pattern detected"
-            detail = "The text's statistical shape (sentence-length uniformity and phrase repetition) resembles AI-generated prose."
+            detail = "The text's statistical shape (sentence rhythm, vocabulary, and phrasing) resembles AI-generated prose."
             color = .green
             icon = "drop.fill"
         case .notWatermarked:
             title = "No AI-typical pattern"
-            detail = "The heuristic found no AI-typical statistical pattern. This is not proof of human authorship."
+            detail = "The local detector found no AI-typical statistical pattern. This is not proof of human authorship."
             color = .gray
             icon = "xmark.circle"
         case .insufficientInput:
@@ -66,8 +76,8 @@ struct VerdictDisplay {
             color = .yellow
             icon = "text.badge.minus"
         case .notAvailable:
-            title = "Detection not yet available"
-            detail = "Anthropic has not released its detection API or the detection parameters."
+            title = "Detection not available"
+            detail = "No detection provider could produce an honest verdict."
             color = .yellow
             icon = "hourglass"
         case .inconclusive:
@@ -91,7 +101,8 @@ struct VerdictDisplay {
             confidenceLabel: verdict.confidence.label.rawValue,
             confidenceValue: verdict.confidence.value,
             evidence: verdict.evidence,
-            caveat: verdict.caveatText
+            caveat: verdict.caveatText,
+            familyHints: verdict.familyHints
         )
     }
 
@@ -137,7 +148,8 @@ struct VerdictDisplay {
             confidenceValue: verdict.confidence.value,
             evidence: verdict.evidence,
             caveat: verdict.caveatText,
-            fileName: verdict.fileName
+            fileName: verdict.fileName,
+            familyHints: []
         )
     }
 }

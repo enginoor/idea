@@ -11,6 +11,12 @@ struct CheckView: View {
     @State private var showImporter = false
     @State private var showFolderImporter = false
     @State private var isTargeted = false
+    /// Rotates through the bundled sample passages so repeated taps show
+    /// different model styles instead of the same text every time.
+    @State private var sampleIndex = 0
+    private var bundledSamples: [SamplePassages.Passage] {
+        (try? SamplePassages.bundled()) ?? []
+    }
 
     var body: some View {
         @Bindable var appState = appState
@@ -108,13 +114,13 @@ struct CheckView: View {
             .help("Paste the clipboard and check it")
 
             Button {
-                appState.textInput = Self.sampleText
+                loadSample()
             } label: {
                 Label("Sample", systemImage: "text.quote")
             }
             .controlSize(.small)
-            .disabled(appState.isAnalyzing)
-            .help("Load a sample passage to try the heuristic")
+            .disabled(appState.isAnalyzing || bundledSamples.isEmpty)
+            .help("Load a bundled sample passage to try the detector")
 
             Button {
                 appState.textInput = ""
@@ -129,13 +135,19 @@ struct CheckView: View {
         }
     }
 
-    /// A deliberately uniform, AI-typical passage: nearly every sentence has
-    /// the same length and shape, which the local heuristic scores as a
-    /// strong positive signal. It exists so a first-time user sees the
-    /// feature work without hunting for a piece of machine text.
-    static let sampleText = """
-    The quarterly review showed steady growth across every region. The team met the targets that were set at the start. Customers responded well to the new product features. The support queue returned to normal after the update. Engineering shipped the release ahead of the original schedule. Marketing measured strong engagement with the new campaign. The board approved the investment plan for next year. Operations reduced costs without affecting service quality. The design team delivered the updated interface on time. Sales reported the strongest quarter in company history. The leadership team agreed on the priorities for the spring. The roadmap for the next release is now finalized.
-    """
+    /// Loads the next bundled sample passage. The passages are deliberately
+    /// AI-typical (uniform sentence rhythm, common vocabulary, model-family
+    /// phrasing) so a first-time user sees the detector work without hunting
+    /// for machine text. Bundled data: no network involved.
+    private func loadSample() {
+        guard !bundledSamples.isEmpty else {
+            appState.statusMessage = "No bundled sample passages were found in the app."
+            return
+        }
+        let passage = bundledSamples[sampleIndex % bundledSamples.count]
+        sampleIndex += 1
+        appState.textInput = passage.text
+    }
 
     private func pasteFromClipboard() {
         guard let text = NSPasteboard.general.string(forType: .string),
@@ -288,7 +300,7 @@ struct CheckView: View {
                 capabilityRow(
                     icon: "text.quote",
                     title: "Text analysis",
-                    detail: "Ready. Paste text or use the sample to run the local statistical heuristic for AI-typical writing patterns.",
+                    detail: "Ready. Paste text or load a sample to detect AI-typical patterns across ChatGPT, Claude, Gemini, and other models. Runs fully offline.",
                     color: .green
                 )
                 capabilityRow(
@@ -296,7 +308,7 @@ struct CheckView: View {
                     title: "File provenance (C2PA)",
                     detail: AppState.toolIsReachable(appState.c2paToolPath)
                         ? "Ready. Drop a file or choose one to verify its signed metadata."
-                        : "Needs c2patool. Install it once with cargo install c2patool, then set the path in Settings.",
+                        : "PNG files work out of the box. Other formats need c2patool; install it once with cargo install c2patool, then set the path in Settings.",
                     color: .green
                 )
             }
@@ -328,15 +340,15 @@ struct CheckView: View {
 
     // MARK: Banners
 
-    /// Text checks run through the local statistical heuristic. Anthropic's
-    /// official watermark detector has not been released, so the banner says
-    /// what the result actually is before the user types, instead of
-    /// surprising them with the verdict after the fact.
+    /// Text checks run through the local multi-model detector. There is no
+    /// released watermark detector for any model, so the banner says what the
+    /// result actually is before the user types, instead of surprising them
+    /// with the verdict after the fact.
     private var textAvailabilityBanner: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "info.circle")
                 .foregroundStyle(.secondary)
-            Text("Text checks use a local statistical heuristic (sentence-length uniformity and phrase repetition). Anthropic's official watermark detector has not been released yet, so treat results as a signal, not proof. File verification (C2PA) works when c2patool is installed.")
+            Text("Text checks run entirely on this Mac: the local detector fuses sentence rhythm, vocabulary, and phrasing patterns that appear across AI-generated prose (ChatGPT, Claude, Gemini, and others). It is a heuristic, not an official watermark detector, so treat results as a signal, not proof. File checks work out of the box for PNG; other formats use c2patool when installed.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -349,7 +361,7 @@ struct CheckView: View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "exclamationmark.triangle")
                 .foregroundStyle(.orange)
-            Text("c2patool is not reachable at \"\(appState.c2paToolPath)\". Install it once with \u{201C}cargo install c2patool\u{201D} or set the path in Settings.")
+            Text("c2patool is not reachable at \"\(appState.c2paToolPath)\". PNG files are still verified by the built-in reader; other formats need the tool. Install it once with \u{201C}cargo install c2patool\u{201D} or set the path in Settings.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

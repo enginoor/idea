@@ -60,6 +60,10 @@ public struct TextVerdict: Codable, Sendable, Equatable {
     public var providersRun: [String]
     public var evidence: [EvidenceItem]
     public var caveatText: String
+    /// Soft style attributions from the phrase pattern database (for example
+    /// "ChatGPT-style"). Hints are evidence of *style*, never proof of a
+    /// specific model. Empty when no family crossed the reporting bar.
+    public var familyHints: [ModelFamilyHint]
 
     public init(
         kind: VerdictKind,
@@ -68,7 +72,8 @@ public struct TextVerdict: Codable, Sendable, Equatable {
         effectiveTokenEstimate: Int,
         providersRun: [String],
         evidence: [EvidenceItem],
-        caveatText: String
+        caveatText: String,
+        familyHints: [ModelFamilyHint] = []
     ) {
         self.kind = kind
         self.confidence = confidence
@@ -77,6 +82,7 @@ public struct TextVerdict: Codable, Sendable, Equatable {
         self.providersRun = providersRun
         self.evidence = evidence
         self.caveatText = caveatText
+        self.familyHints = familyHints
     }
 }
 

@@ -45,6 +45,9 @@ public struct VerdictCombiner: Sendable {
         // (for example the local heuristic's disclaimer) wins over the
         // generic caveat.
         let providerCaveat = results.first { !$0.caveatText.isEmpty }?.caveatText
+        // Style hints merge across providers: per family, keep the strongest
+        // weight and the longest phrase list.
+        let familyHints = Self.mergedHints(results.flatMap(\.familyHints))
 
         if characterCount < preset.minimumTextLength {
             evidence.append(EvidenceItem(
@@ -62,7 +65,8 @@ public struct VerdictCombiner: Sendable {
                     effectiveTokenEstimate: characterCount / 4,
                     providersRun: providersRun,
                     evidence: evidence,
-                    caveatText: Caveats.textPositive(confidenceLabel: confidence.label.rawValue)
+                    caveatText: Caveats.textPositive(confidenceLabel: confidence.label.rawValue),
+                    familyHints: familyHints
                 )
             }
             return TextVerdict(
@@ -72,7 +76,8 @@ public struct VerdictCombiner: Sendable {
                 effectiveTokenEstimate: characterCount / 4,
                 providersRun: providersRun,
                 evidence: evidence,
-                caveatText: Caveats.textTooShort
+                caveatText: Caveats.textTooShort,
+                familyHints: familyHints
             )
         }
 
@@ -91,7 +96,8 @@ public struct VerdictCombiner: Sendable {
                 effectiveTokenEstimate: characterCount / 4,
                 providersRun: providersRun,
                 evidence: evidence,
-                caveatText: providerCaveat ?? Caveats.textPositive(confidenceLabel: confidence.label.rawValue)
+                caveatText: providerCaveat ?? Caveats.textPositive(confidenceLabel: confidence.label.rawValue),
+                familyHints: familyHints
             )
         }
 
@@ -127,7 +133,8 @@ public struct VerdictCombiner: Sendable {
                 effectiveTokenEstimate: characterCount / 4,
                 providersRun: providersRun,
                 evidence: evidence,
-                caveatText: providerCaveat ?? Caveats.textInconclusive
+                caveatText: providerCaveat ?? Caveats.textInconclusive,
+                familyHints: familyHints
             )
         }
 
@@ -144,7 +151,8 @@ public struct VerdictCombiner: Sendable {
                 effectiveTokenEstimate: characterCount / 4,
                 providersRun: providersRun,
                 evidence: evidence,
-                caveatText: Caveats.textTooShort
+                caveatText: Caveats.textTooShort,
+                familyHints: familyHints
             )
         }
 
@@ -163,5 +171,33 @@ public struct VerdictCombiner: Sendable {
             evidence: evidence,
             caveatText: Caveats.detectionNotAvailable
         )
+    }
+
+    /// Merges style hints from several providers into one list. Per family:
+    /// the strongest weight wins, and phrase lists combine (deduplicated,
+    /// strongest first, capped). Order follows weight, then family order.
+    static func mergedHints(_ hints: [ModelFamilyHint]) -> [ModelFamilyHint] {
+        var byFamily: [ModelFamily: ModelFamilyHint] = [:]
+        for hint in hints {
+            if var existing = byFamily[hint.family] {
+                if hint.weight > existing.weight {
+                    existing.weight = hint.weight
+                }
+                var phrases = existing.matchedPhrases
+                for phrase in hint.matchedPhrases where !phrases.contains(phrase) {
+                    phrases.append(phrase)
+                }
+                existing.matchedPhrases = Array(phrases.prefix(6))
+                byFamily[hint.family] = existing
+            } else {
+                byFamily[hint.family] = hint
+            }
+        }
+        return byFamily.values.sorted {
+            if $0.weight == $1.weight {
+                return $0.family.rawValue < $1.family.rawValue
+            }
+            return $0.weight > $1.weight
+        }
     }
 }

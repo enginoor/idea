@@ -51,6 +51,10 @@ struct VerdictPanel: View {
             ProgressView(value: display.confidenceValue)
                 .tint(display.color)
 
+            if !display.familyHints.isEmpty {
+                familyHintsSection
+            }
+
             if !display.evidence.isEmpty {
                 DisclosureGroup("Evidence (\(display.evidence.count))", isExpanded: $showEvidence) {
                     VStack(alignment: .leading, spacing: 10) {
@@ -109,6 +113,39 @@ struct VerdictPanel: View {
             RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(display.color.opacity(0.22))
         )
+    }
+
+    /// Style attribution chips. The wording is deliberately soft: matched
+    /// phrasing is a hint about the writing style, never proof of a specific
+    /// model, and the card says so right next to the chips.
+    private var familyHintsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Writing style hints")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                ForEach(display.familyHints) { hint in
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label(hint.family.displayName, systemImage: "sparkles")
+                            .font(.caption.weight(.medium))
+                        Text(hint.matchedPhrases.prefix(3).joined(separator: ", "))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(display.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
+                }
+            }
+            Text("Style hints come from matched phrasing patterns, not from a watermark. They point at a writing style, they do not identify a specific model.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
     }
 
     private func copySummary() {

@@ -19,9 +19,34 @@ public struct C2PAVerifier: Sendable {
     /// the app stuck in an analyzing state forever.
     public let timeout: TimeInterval
 
-    public init(toolPath: String = "c2patool", timeout: TimeInterval = 30) {
+    /// When true (default), PNG files are verified by the built-in reader
+    /// when c2patool is not installed, so file provenance works out of the
+    /// box. The tool still wins when it is available because it can validate
+    /// signatures, which the built-in reader cannot.
+    public let bundledReaderEnabled: Bool
+
+    public init(
+        toolPath: String = "c2patool",
+        timeout: TimeInterval = 30,
+        bundledReaderEnabled: Bool = true
+    ) {
         self.toolPath = toolPath
         self.timeout = timeout
+        self.bundledReaderEnabled = bundledReaderEnabled
+    }
+
+    /// True when the configured tool path names an executable: an absolute
+    /// or relative path is checked directly, a bare name is resolved against
+    /// PATH. Cheap and synchronous, so the verifier can decide between the
+    /// tool and the bundled reader without launching a process.
+    public static func toolIsReachable(_ path: String) -> Bool {
+        let expanded = (path as NSString).expandingTildeInPath
+        if expanded.contains("/") {
+            return FileManager.default.isExecutableFile(atPath: expanded)
+        }
+        guard let pathValue = getenv("PATH") else { return false }
+        let dirs = String(cString: pathValue).split(separator: ":").map(String.init)
+        return dirs.contains { FileManager.default.isExecutableFile(atPath: $0 + "/" + expanded) }
     }
 
     public enum VerificationError: Error, Sendable {
@@ -34,6 +59,16 @@ public struct C2PAVerifier: Sendable {
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw VerificationError.fileUnreadable(url.path)
         }
+        let fileName = url.lastPathComponent
+        let format = url.pathExtension.lowercased()
+
+        // Self-contained path: when c2patool is missing, PNG files are still
+        // checked by the built-in reader, so the app works out of the box
+        // for the most common AI-image format. The reader cannot validate
+        // the signature, and the verdict says so.
+        if bundledReaderEnabled, format == "png", !Self.toolIsReachable(toolPath) {
+            return try await bundledVerdict(for: url, fileName: fileName, format: format)
+        }
 
         // The tool run blocks while it waits for the process to exit, so it
         // runs on a detached thread: the caller (often the main actor) never
@@ -41,8 +76,6 @@ public struct C2PAVerifier: Sendable {
         let output = try await Task.detached(priority: .userInitiated) {
             try await self.runTool(arguments: [url.path])
         }.value
-        let fileName = url.lastPathComponent
-        let format = url.pathExtension.lowercased()
 
         guard
             let data = output.stdout.data(using: .utf8),
@@ -62,7 +95,45 @@ public struct C2PAVerifier: Sendable {
             manifest: manifest,
             fileName: fileName,
             format: format,
-            toolOutput: output
+            toolOutput: output,
+            verifierDescription: toolPath
+        )
+    }
+
+    /// The no-tool-needed PNG path. Provenance presence, the generating
+    /// tool, and claims are read from the manifest store; the signature is
+    /// reported as unverifiable because validating it needs the tool.
+    private func bundledVerdict(
+        for url: URL,
+        fileName: String,
+        format: String
+    ) async throws -> FileVerdict {
+        let toolOutput = ToolOutput(
+            stdout: "",
+            stderr: "",
+            exitCode: 0
+        )
+        guard
+            let json = try? PNGC2PAReader().extractManifestStoreJSON(at: url),
+            let data = json.data(using: .utf8),
+            let envelope = try? JSONDecoder().decode(ManifestEnvelope.self, from: data),
+            let manifest = envelope.activeManifestEntry ?? envelope.manifests?.values.first
+        else {
+            return noManifestVerdict(
+                fileName: fileName,
+                format: format,
+                toolOutput: toolOutput,
+                verifierDescription: "the built-in PNG reader (no c2patool needed)"
+            )
+        }
+        return verdict(
+            for: url,
+            envelope: envelope,
+            manifest: manifest,
+            fileName: fileName,
+            format: format,
+            toolOutput: toolOutput,
+            verifierDescription: "the built-in PNG reader (no c2patool needed)"
         )
     }
 
@@ -161,13 +232,14 @@ public struct C2PAVerifier: Sendable {
         manifest: ManifestEntry,
         fileName: String,
         format: String,
-        toolOutput: ToolOutput
+        toolOutput: ToolOutput,
+        verifierDescription: String
     ) -> FileVerdict {
         var evidence: [EvidenceItem] = [
             EvidenceItem(
                 source: "C2PA",
                 kind: "tool_run",
-                summary: "Verified with \(toolPath).",
+                summary: "Verified with \(verifierDescription).",
                 detail: "Exit code \(toolOutput.exitCode)."
             ),
             EvidenceItem(
@@ -265,13 +337,14 @@ public struct C2PAVerifier: Sendable {
     private func noManifestVerdict(
         fileName: String,
         format: String,
-        toolOutput: ToolOutput
+        toolOutput: ToolOutput,
+        verifierDescription: String = "c2patool"
     ) -> FileVerdict {
         let evidence: [EvidenceItem] = [
             EvidenceItem(
                 source: "C2PA",
                 kind: "tool_run",
-                summary: "Verified with \(toolPath).",
+                summary: "Verified with \(verifierDescription).",
                 detail: "Exit code \(toolOutput.exitCode)."
             ),
             EvidenceItem(

@@ -20,19 +20,24 @@ public struct ProviderResult: Sendable, Equatable {
     /// over the generic caveat when the provider has something more specific
     /// to say (for example the local analyzer's honest heuristic disclaimer).
     public var caveatText: String
+    /// Soft style attributions (Claude-style, ChatGPT-style, ...) from the
+    /// provider, if it makes any. Never proof of a specific model.
+    public var familyHints: [ModelFamilyHint]
 
     public init(
         source: String,
         signal: ProviderSignal,
         confidence: Confidence,
         evidence: [EvidenceItem],
-        caveatText: String = ""
+        caveatText: String = "",
+        familyHints: [ModelFamilyHint] = []
     ) {
         self.source = source
         self.signal = signal
         self.confidence = confidence
         self.evidence = evidence
         self.caveatText = caveatText
+        self.familyHints = familyHints
     }
 }
 
@@ -41,16 +46,29 @@ public protocol TextWatermarkProvider: Sendable {
     func analyze(_ text: String, options: AnalysisOptions) async throws -> ProviderResult
 }
 
-/// The local analyzer is a statistical heuristic, the same family of
-/// signals the first generation of AI-text detectors used: AI generated
-/// prose tends to have more uniform sentence lengths (low burstiness) and
-/// more repeated phrases than human writing.
+/// The local detector is a statistical heuristic, the same family of
+/// signals the first generation of AI-text detectors used, extended to cover
+/// any model family, not just Claude:
+///
+/// - **Burstiness**: the coefficient of variation of sentence lengths. AI
+///   prose is uniform; human writing is bursty.
+/// - **Phrase repetition**: how often word pairs repeat.
+/// - **Perplexity**: how surprising the vocabulary choices are, measured
+///   against a bundled English frequency dictionary. AI prose stays in the
+///   common middle of the vocabulary; human writing reaches for rarer words.
+/// - **Rare-word rate**: the same vocabulary signal expressed as a rate.
+/// - **AI phrasing**: a bundled database of phrases that appear
+///   disproportionately often in AI-generated prose, tagged by model family
+///   (Claude, ChatGPT, Gemini, generic). Density of matches feeds the score
+///   and produces soft style hints.
 ///
 /// It is honest about what it is. Anthropic's official watermark detector
-/// has not been released, so this analyzer never claims to detect the
-/// watermark itself. It reports AI-typical *patterns* with a confidence
+/// has not been released, and no local statistical detector can prove
+/// authorship. The analyzer reports AI-typical *patterns* with a confidence
 /// ceiling of moderate, and every verdict carries evidence showing the raw
-/// statistics behind the score.
+/// statistics behind the score. It runs entirely on-device: the frequency
+/// dictionary and phrase database ship inside the app, so detection needs no
+/// network and no installed tools.
 public struct LocalStatisticalAnalyzer: TextWatermarkProvider {
     public var source: String { "LocalAnalyzer" }
 
@@ -65,7 +83,9 @@ public struct LocalStatisticalAnalyzer: TextWatermarkProvider {
     public init() {}
 
     public func analyze(_ text: String, options: AnalysisOptions) async throws -> ProviderResult {
-        let stats = TextStatistics(text: text)
+        let dictionary = try BundledResources.frequencyDictionary()
+        let phrases = try BundledResources.phraseDatabase()
+        let stats = TextStatistics(text: text, dictionary: dictionary, phrases: phrases)
 
         guard stats.sentenceCount >= 3, stats.wordCount >= 40 else {
             return ProviderResult(
@@ -89,8 +109,9 @@ public struct LocalStatisticalAnalyzer: TextWatermarkProvider {
             source: source,
             kind: "heuristic_score",
             summary: "AI-typical score: \(String(format: "%.2f", score)).",
-            detail: "Combines sentence-length uniformity and phrase repetition. Higher means more AI-typical. This is a heuristic, not the released Anthropic watermark detector."
+            detail: "Combines sentence-length uniformity, phrase repetition, vocabulary surprisal, rare-word rate, and AI phrasing density. Higher means more AI-typical. This is a heuristic, not the released Anthropic watermark detector, and it covers any model family."
         ))
+        let hints = phrases.familyHints(from: stats.phraseReport)
 
         if score >= detectedThreshold {
             let rawConfidence = 0.55 + 0.25 * (score - detectedThreshold) / (1 - detectedThreshold)
@@ -105,7 +126,8 @@ public struct LocalStatisticalAnalyzer: TextWatermarkProvider {
                 signal: .detected,
                 confidence: confidence,
                 evidence: evidence,
-                caveatText: Caveats.textPositiveHeuristic(confidenceLabel: confidence.label.rawValue)
+                caveatText: Caveats.textPositiveHeuristic(confidenceLabel: confidence.label.rawValue),
+                familyHints: hints
             )
         }
 
@@ -135,7 +157,8 @@ public struct LocalStatisticalAnalyzer: TextWatermarkProvider {
             source: source,
             signal: .inconclusive,
             confidence: ConfidenceRules.confidence(0.5),
-            evidence: evidence
+            evidence: evidence,
+            familyHints: hints
         )
     }
 }
@@ -152,15 +175,27 @@ struct TextStatistics {
     let burstiness: Double
     /// Fraction of bigram positions that repeat an earlier bigram.
     let repeatedBigramRate: Double
-    /// 0...1, higher is more AI-typical. Weighted toward burstiness, the
-    /// strongest local signal, with repetition as a mild secondary signal.
+    /// Vocabulary surprisal and rare-word stats from the frequency dictionary.
+    let tokenStats: TokenStats
+    /// Matched AI phrasing patterns and their family attributions.
+    let phraseReport: AIPhraseDatabase.MatchReport
+    /// 0...1, higher is more AI-typical.
     let aiTypicalityScore: Double
 
+    /// Convenience initializer for tests and tooling where the bundled
+    /// resources are guaranteed present. Production analysis goes through
+    /// the explicit-resources initializer so missing data fails loudly.
     init(text: String) {
-        let words = Self.tokenizeWords(text)
+        let dictionary = try! BundledResources.frequencyDictionary()
+        let phrases = try! BundledResources.phraseDatabase()
+        self.init(text: text, dictionary: dictionary, phrases: phrases)
+    }
+
+    init(text: String, dictionary: FrequencyDictionary, phrases: AIPhraseDatabase) {
+        let words = FrequencyDictionary.tokenize(text)
         let sentences = Self.splitSentences(text)
         let lengths = sentences
-            .map { Self.tokenizeWords($0).count }
+            .map { FrequencyDictionary.tokenize($0).count }
             .filter { $0 >= 2 }
 
         self.wordCount = words.count
@@ -169,14 +204,18 @@ struct TextStatistics {
         self.sentenceLengths = lengths
         self.burstiness = Self.burstiness(of: lengths)
         self.repeatedBigramRate = Self.repeatedBigramRate(of: words)
+        self.tokenStats = dictionary.stats(forTokens: words)
+        self.phraseReport = phrases.match(text)
         self.aiTypicalityScore = Self.score(
             burstiness: burstiness,
-            repeatedBigramRate: repeatedBigramRate
+            repeatedBigramRate: repeatedBigramRate,
+            tokenStats: tokenStats,
+            phraseReport: phraseReport
         )
     }
 
     var evidenceItems: [EvidenceItem] {
-        [
+        var items = [
             EvidenceItem(
                 source: "LocalAnalyzer",
                 kind: "burstiness",
@@ -195,7 +234,22 @@ struct TextStatistics {
                 summary: "\(wordCount) words, \(uniqueWordCount) unique, across \(sentenceCount) sentences.",
                 detail: "Lexical diversity (type-token ratio): \(String(format: "%.2f", wordCount > 0 ? Double(uniqueWordCount) / Double(wordCount) : 0))."
             ),
+            EvidenceItem(
+                source: "LocalAnalyzer",
+                kind: "perplexity",
+                summary: "Vocabulary surprisal: \(String(format: "%.2f", tokenStats.averageSurprisal)) of \(Int(TokenStats.maxSurprisal)), with \(tokenStats.outOfVocabularyCount) unknown words.",
+                detail: "Average per-word surprisal measured against a bundled English frequency dictionary. AI prose tends to stay in common vocabulary (low surprisal); human writing reaches for rarer words."
+            ),
         ]
+        if phraseReport.matchedCount > 0 {
+            items.append(EvidenceItem(
+                source: "LocalAnalyzer",
+                kind: "ai_phrasing",
+                summary: "\(phraseReport.matchedCount) AI-typical phrases matched (weight \(String(format: "%.1f", phraseReport.totalWeight))).",
+                detail: phraseReport.matchedPhrases.prefix(8).joined(separator: ", ")
+            ))
+        }
+        return items
     }
 
     // MARK: - Feature computation
@@ -230,30 +284,28 @@ struct TextStatistics {
         return Double(repeats) / Double(total)
     }
 
-    private static func score(burstiness: Double, repeatedBigramRate: Double) -> Double {
+    /// The five-signal fusion. Sentence-shape signals (uniformity and
+    /// repetition) carry the most weight because they separate cleanly;
+    /// vocabulary surprisal, rare-word rate, and phrase density act as the
+    /// secondary signals that push a borderline text over the line - this is
+    /// what lets a bursty but phrase-heavy and low-surprisal AI passage still
+    /// read as AI-typical, for any model family.
+    static func score(
+        burstiness: Double,
+        repeatedBigramRate: Double,
+        tokenStats: TokenStats,
+        phraseReport: AIPhraseDatabase.MatchReport
+    ) -> Double {
         // Uniform sentence lengths (burstiness 0.3 or less) are strongly
         // AI-typical; at a coefficient of variation of 1.0 the text looks
         // human-bursty and the uniformity term reaches zero.
         let uniformity = 1 - min(max(burstiness - 0.3, 0) / 0.7, 1)
         let repetition = min(repeatedBigramRate * 5, 1)
-        return 0.75 * uniformity + 0.25 * repetition
-    }
-
-    private static func tokenizeWords(_ text: String) -> [String] {
-        var words: [String] = []
-        var current = ""
-        for ch in text.lowercased() {
-            if ch.isLetter || ch.isNumber {
-                current.append(ch)
-            } else if !current.isEmpty {
-                words.append(current)
-                current = ""
-            }
-        }
-        if !current.isEmpty {
-            words.append(current)
-        }
-        return words
+        return 0.40 * uniformity
+            + 0.20 * repetition
+            + 0.15 * tokenStats.perplexityTerm
+            + 0.10 * tokenStats.commonVocabularyTerm
+            + 0.15 * phraseReport.phraseTerm
     }
 
     /// Splits on sentence-ending punctuation and line breaks. A period

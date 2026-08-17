@@ -65,6 +65,24 @@ cp "${BINARY}" "${APP_DIR}/Contents/MacOS/OriginCheck"
 # can silently drop (Sparkle's framework relies on Versions/Current links).
 ditto "${SPARKLE_FRAMEWORK}" "${APP_DIR}/Contents/Frameworks/Sparkle.framework"
 
+# The engine's bundled detection data (English frequency dictionary, AI
+# phrase database, sample passages) is emitted by SwiftPM next to the
+# executable as a per-target resource container. SwiftPM 6 names it
+# <Target>_<Package>.resources; older versions used <Target>_<Package>.bundle.
+# Without it the app cannot detect anything, so the container is embedded
+# into Contents/Resources and the copy is verified by validate-app.sh below.
+RESOURCE_BUNDLES="$(find "${ROOT}/App/.build/release" -maxdepth 1 \( -name '*.bundle' -o -name '*.resources' \) 2>/dev/null || true)"
+if [[ -n "${RESOURCE_BUNDLES}" ]]; then
+  while IFS= read -r bundle; do
+    if [[ -n "${bundle}" ]]; then
+      ditto "${bundle}" "${APP_DIR}/Contents/Resources/$(basename "${bundle}")"
+      echo "Embedded resource bundle: $(basename "${bundle}")"
+    fi
+  done <<< "${RESOURCE_BUNDLES}"
+else
+  echo "warning: no engine resource bundle found in App/.build/release; the app would ship without detection data" >&2
+fi
+
 # App icon: assets/AppIcon.png is converted to icns by make-icon.sh.
 ICNS="${ROOT}/build/AppIcon.icns"
 if [[ ! -f "${ICNS}" ]]; then

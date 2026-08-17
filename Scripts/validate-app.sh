@@ -25,6 +25,22 @@ fail() {
 [[ -d "${APP}/Contents/MacOS" ]] || fail "Contents/MacOS missing"
 [[ -d "${APP}/Contents/Resources" ]] || fail "Contents/Resources missing"
 
+# The engine's detection data must ship inside the app: without the resource
+# container, text detection has no frequency dictionary or phrase database and
+# the app silently degrades. A release without it is not shippable.
+# SwiftPM 6 names the container <Target>_<Package>.resources; older versions
+# used <Target>_<Package>.bundle. Accept either.
+RESOURCE_BUNDLE="$(find "${APP}/Contents/Resources" -maxdepth 1 \( -name '*.bundle' -o -name '*.resources' \) 2>/dev/null | head -1)"
+if [[ -n "${RESOURCE_BUNDLE}" ]]; then
+  for DATA_FILE in "english-frequencies.tsv" "ai-phrases.json" "sample-passages.json"; do
+    find "${RESOURCE_BUNDLE}" -name "${DATA_FILE}" | grep -q . \
+      || fail "detection data ${DATA_FILE} missing from embedded resource bundle"
+  done
+  echo "Detection resource bundle embedded: $(basename "${RESOURCE_BUNDLE}")"
+else
+  fail "no engine resource bundle in Contents/Resources; detection would not work"
+fi
+
 BIN="${APP}/Contents/MacOS/OriginCheck"
 [[ -x "${BIN}" ]] || fail "executable not found at ${BIN}"
 

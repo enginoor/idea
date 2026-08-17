@@ -11,7 +11,16 @@ let package = Package(
         .library(name: "OriginCheckEngine", targets: ["OriginCheckEngine"])
     ],
     targets: [
-        .target(name: "OriginCheckEngine"),
+        .target(
+            name: "OriginCheckEngine",
+            resources: [
+                // Detection data ships inside the app bundle (english
+                // frequency dictionary, AI phrase database, sample
+                // passages), so text detection is fully offline and needs
+                // no installed tools or network access.
+                .copy("Resources")
+            ]
+        ),
         .testTarget(
             name: "OriginCheckEngineTests",
             dependencies: ["OriginCheckEngine"]
