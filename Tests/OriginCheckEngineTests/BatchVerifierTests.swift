@@ -165,18 +165,19 @@ struct BatchVerifierTests {
 
     @Test
     func testMissingToolFailsUncoveredFormatsAndUsesBundledReaders() async throws {
-        // The bundled readers keep PNG, JPEG, SVG, and WebP verifiable when
-        // c2patool is missing; every other format fails loudly. The five
-        // covered fixtures carry no real manifest (they are dummy bytes), so
-        // they report a no-manifest verdict instead of failing.
+        // The bundled readers keep PNG, JPEG, SVG, WebP, the BMFF family
+        // (MP4, MOV), and TIFF verifiable when c2patool is missing; only pdf
+        // still fails loudly. The covered fixtures carry no real manifest
+        // (they are dummy bytes), so they report a no-manifest verdict
+        // instead of failing.
         let root = try makeSampleFolder()
         let report = try await FolderVerifier(c2paToolPath: "/nonexistent/c2patool")
             .verifyDirectory(at: root)
 
         #expect(report.toolMissing)
         #expect(report.hasFailures)
-        #expect(report.summary.failed == 3, "pdf, mov, and mp4 fail without the tool")
-        #expect(report.verdicts.count == 5, "png, png, webp, jpg, and svg get honest verdicts")
+        #expect(report.summary.failed == 1, "pdf is the only sample format without a bundled reader")
+        #expect(report.verdicts.count == 7, "webp, png, png, jpg, svg, mov, and mp4 get honest verdicts")
         #expect(report.verdicts.allSatisfy { StandaloneC2PAReader.supportedExtensions.contains($0.format) })
         #expect(report.verdicts.allSatisfy { $0.kind == .notWatermarked })
         #expect(report.failures.allSatisfy { $0.reason.contains("Could not launch") })
