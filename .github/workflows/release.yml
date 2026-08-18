@@ -73,6 +73,19 @@ jobs:
         with:
           swift-version: "6.0.3"
 
+      # Cache poisoning guard: the swift.org toolchain can be rebuilt (and
+      # runner images rotate Xcode) without the "6.0.3" version string
+      # changing, which silently invalidates cached .build products (test
+      # bundles dlopen-fail on @rpath/XCTestCore.framework). Hash the actual
+      # swift binary and Xcode version so a cache saved under a different
+      # toolchain is never restored; a mismatch just means one cold build.
+      - name: Compute the Swift toolchain fingerprint
+        id: toolchain
+        run: |
+          SWIFT_HASH="$(shasum -a 256 "$(command -v swift)" | awk '{print $1}' | cut -c1-16)"
+          XCODE_HASH="$(xcodebuild -version 2>/dev/null | head -2 | tr -d '\n' | shasum -a 256 | awk '{print $1}' | cut -c1-8 || echo none)"
+          echo "fingerprint=${SWIFT_HASH}-${XCODE_HASH}" >> "${GITHUB_OUTPUT}"
+
       - name: Resolve version and build number
         id: names
         run: |
@@ -118,7 +131,9 @@ jobs:
 
       # Same cache keys as ci.yml, so a release reuses the freshest build
       # from any CI run instead of cold-building Swift and re-downloading the
-      # Sparkle binary artifact every time.
+      # Sparkle binary artifact every time. The toolchain fingerprint is part
+      # of the key so a cache from a different toolchain is never restored
+      # (see the poisoning guard above).
       - name: Restore the Swift build caches
         id: cache-restore
         uses: actions/cache/restore@v5
@@ -126,8 +141,8 @@ jobs:
           path: |
             .build
             App/.build
-          key: swiftpm-macos-${{ github.sha }}
-          restore-keys: swiftpm-macos-
+          key: swiftpm-macos-${{ steps.toolchain.outputs.fingerprint }}-${{ github.sha }}
+          restore-keys: swiftpm-macos-${{ steps.toolchain.outputs.fingerprint }}-
 
       - name: Run the engine test suite on macOS
         run: swift test
@@ -147,7 +162,7 @@ jobs:
           path: |
             .build
             App/.build
-          key: swiftpm-macos-${{ github.sha }}
+          key: swiftpm-macos-${{ steps.toolchain.outputs.fingerprint }}-${{ github.sha }}
 
       # Optional: dmgbuild produces the branded drag-to-install layout.
       # If it cannot be installed, make-dmg.sh falls back to a plain
