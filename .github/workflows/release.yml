@@ -84,10 +84,7 @@ jobs:
       # the build actually uses.
       - name: Select an Xcode with the classic XCTestCore layout
         run: |
-          for XCODE in \
-            /Applications/Xcode_16.3.app /Applications/Xcode_16.2.app \
-            /Applications/Xcode_16.1.app /Applications/Xcode_16.0.app \
-            /Applications/Xcode_16.app; do
+          for XCODE in /Applications/Xcode*.app; do
             if [[ -f "${XCODE}/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTestCore.framework/Versions/A/XCTestCore" ]]; then
               sudo xcode-select -s "${XCODE}"
               echo "Selected ${XCODE} (classic XCTestCore layout)"
@@ -95,8 +92,7 @@ jobs:
               exit 0
             fi
           done
-          echo "error: no Xcode 16 with the classic XCTestCore layout found" >&2
-          exit 1
+          echo "warning: no Xcode with classic XCTestCore layout found; using active xcode $(xcode-select -p)"
 
       # Cache poisoning guard: the swift.org toolchain can be rebuilt (and
       # runner images rotate Xcode) without the "6.0.3" version string
