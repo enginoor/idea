@@ -38,18 +38,30 @@ public struct C2PAVerifier: Sendable {
         self.bundledReaderEnabled = bundledReaderEnabled
     }
 
+    /// Resolves an executable path: expands tildes, checks if an explicit
+    /// path exists and is executable, or looks up bare command names in PATH.
+    public static func resolveExecutablePath(_ path: String) -> String? {
+        let expanded = (path as NSString).expandingTildeInPath
+        if expanded.contains("/") {
+            return FileManager.default.isExecutableFile(atPath: expanded) ? expanded : nil
+        }
+        guard let pathValue = getenv("PATH") else { return nil }
+        let dirs = String(cString: pathValue).split(separator: ":").map(String.init)
+        for dir in dirs {
+            let fullPath = dir + "/" + expanded
+            if FileManager.default.isExecutableFile(atPath: fullPath) {
+                return fullPath
+            }
+        }
+        return nil
+    }
+
     /// True when the configured tool path names an executable: an absolute
     /// or relative path is checked directly, a bare name is resolved against
     /// PATH. Cheap and synchronous, so the verifier can decide between the
     /// tool and the bundled reader without launching a process.
     public static func toolIsReachable(_ path: String) -> Bool {
-        let expanded = (path as NSString).expandingTildeInPath
-        if expanded.contains("/") {
-            return FileManager.default.isExecutableFile(atPath: expanded)
-        }
-        guard let pathValue = getenv("PATH") else { return false }
-        let dirs = String(cString: pathValue).split(separator: ":").map(String.init)
-        return dirs.contains { FileManager.default.isExecutableFile(atPath: $0 + "/" + expanded) }
+        resolveExecutablePath(path) != nil
     }
 
     public enum VerificationError: Error, Sendable {
@@ -172,8 +184,9 @@ public struct C2PAVerifier: Sendable {
 
     /// Runs the tool exactly once.
     private func runToolOnce(arguments: [String]) async throws -> ToolOutput {
+        let resolvedPath = Self.resolveExecutablePath(toolPath) ?? (toolPath as NSString).expandingTildeInPath
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: toolPath)
+        process.executableURL = URL(fileURLWithPath: resolvedPath)
         process.arguments = arguments
 
         let outPipe = Pipe()
