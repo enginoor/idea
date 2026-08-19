@@ -66,38 +66,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Pin the same 6.0.3 toolchain the Linux gate job uses so the build
-      # is reproducible regardless of which Swift version the runner image
-      # ships.
-      - uses: swift-actions/setup-swift@v2.4.0
-        with:
-          swift-version: "6.0.3"
-
-      # Runner images now default to Xcode 16.4, which moved
-      # XCTestCore.framework out of the classic platform path the swift.org
-      # 6.0.3 test bundle dlopens (@rpath/XCTestCore.framework -> "no such
-      # file" crashes every swift test). The image still ships older Xcodes
-      # with the classic layout; select the newest one that has it so the
-      # pinned toolchain's testing helper can load the test bundle. Fails
-      # loudly instead of silently if no compatible Xcode exists. Must run
-      # before the fingerprint below so the cache key reflects the Xcode
-      # the build actually uses.
-      - name: Select an Xcode with the classic XCTestCore layout
-        run: |
-          for XCODE in \
-            /Applications/Xcode_16.3.app /Applications/Xcode_16.2.app \
-            /Applications/Xcode_16.1.app /Applications/Xcode_16.0.app \
-            /Applications/Xcode_16.app; do
-            if [[ -f "${XCODE}/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTestCore.framework/Versions/A/XCTestCore" ]]; then
-              sudo xcode-select -s "${XCODE}"
-              echo "Selected ${XCODE} (classic XCTestCore layout)"
-              xcode-select -p
-              exit 0
-            fi
-          done
-          echo "error: no Xcode 16 with the classic XCTestCore layout found" >&2
-          exit 1
-
       # Cache poisoning guard: the swift.org toolchain can be rebuilt (and
       # runner images rotate Xcode) without the "6.0.3" version string
       # changing, which silently invalidates cached .build products (test
