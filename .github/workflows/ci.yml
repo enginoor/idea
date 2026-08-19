@@ -64,39 +64,15 @@ jobs:
 
   test-and-build-macos:
     name: Engine tests and app build (macOS)
-    # Runs on macos-15 (Apple Silicon, Xcode 16). The macos-14 image
-    # (Intel, Xcode 15.4) requires a separate swift.org 6.0.3 toolchain, and
-    # in that combination `swift test` deterministically hangs inside xctest
-    # with no test output, cancelling the job at its timeout on every run.
-    # The same suite passed on macos-15, so the runner image is the variable.
+    # Runs on macos-15 (Apple Silicon, Xcode 16). Uses native Xcode Swift to
+    # avoid XCTestCore framework path mismatches from swift.org toolchain overrides.
     # The minimum deployment target is still enforced by the package manifest
     # (platforms: [.macOS(.v14)]), so the build gate is not weakened.
     runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-      - uses: swift-actions/setup-swift@v2.4.0
-        with:
-          swift-version: "6.0.3"
-      # Runner images now default to Xcode 16.4, which moved
-      # XCTestCore.framework out of the classic platform path the swift.org
-      # 6.0.3 test bundle dlopens (@rpath/XCTestCore.framework -> "no such
-      # file" crashes every swift test). The image still ships older Xcodes
-      # with the classic layout; select the newest one that has it so the
-      # pinned toolchain's testing helper can load the test bundle. Fails
-      # loudly instead of silently if no compatible Xcode exists.
-      - name: Select an Xcode with the classic XCTestCore layout
-        run: |
-          for XCODE in /Applications/Xcode*.app; do
-            if [[ -f "${XCODE}/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks/XCTestCore.framework/Versions/A/XCTestCore" ]]; then
-              sudo xcode-select -s "${XCODE}"
-              echo "Selected ${XCODE} (classic XCTestCore layout)"
-              xcode-select -p
-              exit 0
-            fi
-          done
-          echo "warning: no Xcode with classic XCTestCore layout found; using active xcode $(xcode-select -p)"
-      # Cache poisoning guard: the swift.org toolchain can be rebuilt (and
+      # Cache poisoning guard: hash the actual swift binary and Xcode version.
       # runner images rotate Xcode) without the "6.0.3" version string
       # changing, which silently invalidates cached .build products (test
       # bundles dlopen-fail on @rpath/XCTestCore.framework). Hash the actual
@@ -127,10 +103,7 @@ jobs:
           key: swiftpm-macos-${{ steps.toolchain.outputs.fingerprint }}-${{ github.sha }}
           restore-keys: swiftpm-macos-${{ steps.toolchain.outputs.fingerprint }}-
       - name: Run the engine test suite
-        run: |
-          XCODE_DEV="$(xcode-select -p)"
-          export DYLD_FRAMEWORK_PATH="${XCODE_DEV}/Library/Frameworks:${XCODE_DEV}/Platforms/MacOSX.platform/Developer/Library/Frameworks:${DYLD_FRAMEWORK_PATH:-}"
-          swift test
+        run: swift test
       # Release config, not debug: this gates on exactly the configuration
       # that ships in the DMG, which is the configuration the Release
       # workflow builds anyway. The swift.org 6.0.3 compiler crashes in
