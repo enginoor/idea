@@ -166,7 +166,10 @@ jobs:
           restore-keys: swiftpm-macos-${{ steps.toolchain.outputs.fingerprint }}-
 
       - name: Run the engine test suite on macOS
-        run: swift test
+        run: |
+          XCODE_DEV="$(xcode-select -p)"
+          export DYLD_FRAMEWORK_PATH="${XCODE_DEV}/Library/Frameworks:${XCODE_DEV}/Platforms/MacOSX.platform/Developer/Library/Frameworks:${DYLD_FRAMEWORK_PATH:-}"
+          swift test
 
       - name: Resolve Swift package dependencies (fetches Sparkle)
         run: cd App && swift package resolve

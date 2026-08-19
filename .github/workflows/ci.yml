@@ -127,7 +127,10 @@ jobs:
           key: swiftpm-macos-${{ steps.toolchain.outputs.fingerprint }}-${{ github.sha }}
           restore-keys: swiftpm-macos-${{ steps.toolchain.outputs.fingerprint }}-
       - name: Run the engine test suite
-        run: swift test
+        run: |
+          XCODE_DEV="$(xcode-select -p)"
+          export DYLD_FRAMEWORK_PATH="${XCODE_DEV}/Library/Frameworks:${XCODE_DEV}/Platforms/MacOSX.platform/Developer/Library/Frameworks:${DYLD_FRAMEWORK_PATH:-}"
+          swift test
       # Release config, not debug: this gates on exactly the configuration
       # that ships in the DMG, which is the configuration the Release
       # workflow builds anyway. The swift.org 6.0.3 compiler crashes in
