@@ -239,7 +239,7 @@ struct HistoryView: View {
 
     private func exportJSON() {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
+        panel.allowedContentTypes = [UTType.json]
         panel.nameFieldStringValue = "OriginCheck-history.json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let encoder = JSONEncoder()
@@ -251,7 +251,7 @@ struct HistoryView: View {
 
     private func exportCSV() {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.allowedContentTypes = [UTType.commaSeparatedText]
         panel.nameFieldStringValue = "OriginCheck-history.csv"
         guard panel.runModal() == .OK, let url = panel.url else { return }
 

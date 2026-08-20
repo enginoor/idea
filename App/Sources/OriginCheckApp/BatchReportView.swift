@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import OriginCheckEngine
 
 /// Renders a folder scan as a report card. Counts are factual; the caveat
@@ -209,7 +210,7 @@ struct BatchReportView: View {
 
     private func exportJSONReport() {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
+        panel.allowedContentTypes = [UTType.json]
         panel.nameFieldStringValue = "OriginCheck-folder-scan.json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let encoder = JSONEncoder()
@@ -221,7 +222,7 @@ struct BatchReportView: View {
 
     private func exportCSVReport() {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.commaSeparatedText]
+        panel.allowedContentTypes = [UTType.commaSeparatedText]
         panel.nameFieldStringValue = "OriginCheck-folder-scan.csv"
         guard panel.runModal() == .OK, let url = panel.url else { return }
 

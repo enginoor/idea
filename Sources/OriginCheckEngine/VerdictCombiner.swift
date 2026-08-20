@@ -39,7 +39,6 @@ public struct VerdictCombiner: Sendable {
         let detected = results.filter { $0.signal == .detected }
         let notDetected = results.filter { $0.signal == .notDetected }
         let insufficient = results.filter { $0.signal == .insufficient }
-        let unavailable = results.filter { $0.signal == .unavailable }
         let inconclusive = results.filter { $0.signal == .inconclusive }
         // A provider that has something specific to say about its verdict
         // (for example the local heuristic's disclaimer) wins over the
