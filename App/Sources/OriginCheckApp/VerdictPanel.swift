@@ -8,6 +8,7 @@ import OriginCheckEngine
 struct VerdictPanel: View {
     let display: VerdictDisplay
     @State private var showEvidence = false
+    @State private var showSentences = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -53,6 +54,10 @@ struct VerdictPanel: View {
 
             if !display.familyHints.isEmpty {
                 familyHintsSection
+            }
+
+            if !display.sentenceAnalyses.isEmpty {
+                sentenceAnalysesSection
             }
 
             if !display.evidence.isEmpty {
@@ -146,6 +151,50 @@ struct VerdictPanel: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var sentenceAnalysesSection: some View {
+        DisclosureGroup("Sentence breakdown (\(display.sentenceAnalyses.count))", isExpanded: $showSentences) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(display.sentenceAnalyses) { item in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(alignment: .top) {
+                            Text(item.sentenceText)
+                                .font(.subheadline)
+                                .lineLimit(3)
+                            Spacer()
+                            Text(item.aiTypicalityScore.formatted(.percent.precision(.fractionLength(0))))
+                                .font(.caption)
+                                .monospacedDigit()
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(scoreColor(item.aiTypicalityScore).opacity(0.15))
+                                .foregroundStyle(scoreColor(item.aiTypicalityScore))
+                                .clipShape(Capsule())
+                        }
+                        if !item.matchedPhrases.isEmpty {
+                            Text("Matched phrases: \(item.matchedPhrases.joined(separator: ", "))")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+                }
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    private func scoreColor(_ score: Double) -> Color {
+        if score >= 0.60 {
+            return .red
+        } else if score >= 0.42 {
+            return .orange
+        } else {
+            return .green
+        }
     }
 
     private func copySummary() {

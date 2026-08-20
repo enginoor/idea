@@ -23,6 +23,8 @@ public struct ProviderResult: Sendable, Equatable {
     /// Soft style attributions (Claude-style, ChatGPT-style, ...) from the
     /// provider, if it makes any. Never proof of a specific model.
     public var familyHints: [ModelFamilyHint]
+    /// Sentence-level statistical breakdown.
+    public var sentenceAnalyses: [SentenceAnalysis]
 
     public init(
         source: String,
@@ -30,7 +32,8 @@ public struct ProviderResult: Sendable, Equatable {
         confidence: Confidence,
         evidence: [EvidenceItem],
         caveatText: String = "",
-        familyHints: [ModelFamilyHint] = []
+        familyHints: [ModelFamilyHint] = [],
+        sentenceAnalyses: [SentenceAnalysis] = []
     ) {
         self.source = source
         self.signal = signal
@@ -38,6 +41,7 @@ public struct ProviderResult: Sendable, Equatable {
         self.evidence = evidence
         self.caveatText = caveatText
         self.familyHints = familyHints
+        self.sentenceAnalyses = sentenceAnalyses
     }
 }
 
@@ -127,7 +131,8 @@ public struct LocalStatisticalAnalyzer: TextWatermarkProvider {
                 confidence: confidence,
                 evidence: evidence,
                 caveatText: Caveats.textPositiveHeuristic(confidenceLabel: confidence.label.rawValue),
-                familyHints: hints
+                familyHints: hints,
+                sentenceAnalyses: stats.sentenceAnalyses
             )
         }
 
@@ -144,7 +149,8 @@ public struct LocalStatisticalAnalyzer: TextWatermarkProvider {
                 signal: .notDetected,
                 confidence: confidence,
                 evidence: evidence,
-                caveatText: Caveats.textNegativeHeuristic
+                caveatText: Caveats.textNegativeHeuristic,
+                sentenceAnalyses: stats.sentenceAnalyses
             )
         }
 
@@ -158,7 +164,8 @@ public struct LocalStatisticalAnalyzer: TextWatermarkProvider {
             signal: .inconclusive,
             confidence: ConfidenceRules.confidence(0.5),
             evidence: evidence,
-            familyHints: hints
+            familyHints: hints,
+            sentenceAnalyses: stats.sentenceAnalyses
         )
     }
 }
@@ -181,6 +188,8 @@ struct TextStatistics {
     let phraseReport: AIPhraseDatabase.MatchReport
     /// 0...1, higher is more AI-typical.
     let aiTypicalityScore: Double
+    /// Per-sentence statistical breakdown.
+    let sentenceAnalyses: [SentenceAnalysis]
 
     /// Convenience initializer for tests and tooling where the bundled
     /// resources are guaranteed present. Production analysis goes through
@@ -212,6 +221,28 @@ struct TextStatistics {
             tokenStats: tokenStats,
             phraseReport: phraseReport
         )
+
+        let meanLength = Double(words.count) / Double(max(sentences.count, 1))
+        self.sentenceAnalyses = sentences.map { sentenceText in
+            let sentenceWords = FrequencyDictionary.tokenize(sentenceText)
+            let sReport = phrases.match(sentenceText)
+            let sStats = dictionary.stats(forTokens: sentenceWords)
+
+            let dev = abs(Double(sentenceWords.count) - meanLength) / max(meanLength, 1.0)
+            let sUniformity = 1.0 - min(dev / 1.5, 1.0)
+
+            let rawScore = 0.35 * sUniformity
+                + 0.35 * sStats.perplexityTerm
+                + 0.30 * sReport.phraseTerm
+            let finalScore = min(max(rawScore, 0.0), 1.0)
+
+            return SentenceAnalysis(
+                sentenceText: sentenceText,
+                wordCount: sentenceWords.count,
+                aiTypicalityScore: finalScore,
+                matchedPhrases: sReport.matchedPhrases
+            )
+        }
     }
 
     var evidenceItems: [EvidenceItem] {

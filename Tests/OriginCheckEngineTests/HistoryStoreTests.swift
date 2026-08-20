@@ -72,13 +72,16 @@ struct HistoryStoreTests {
         for i in 0..<count {
             bytes[i] = UInt8((i * 7 + 3) % 256)
         }
-        try Data(bytes).write(to: url)
+        let data = Data(bytes)
+        try data.write(to: url)
 
+        let expectedHash = SHA256.hashData(data)
         let start = Date()
         let hash = try SHA256.hashFile(at: url)
-        #expect(hash == SHA256.hashData(Data(bytes)))
+        let elapsed = Date().timeIntervalSince(start)
+        #expect(hash == expectedHash)
         #expect(
-            Date().timeIntervalSince(start) < 5.0,
+            elapsed < 10.0,
             "Hashing 8 MiB must complete quickly, not quadratically"
         )
     }

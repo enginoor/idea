@@ -6,10 +6,24 @@ import OriginCheckEngine
 /// History follows the Mail pattern: a searchable record list on the left,
 /// and the selected record's details in the pane on the right. No modal
 /// sheets: the detail is always visible next to the list it came from.
+enum HistoryCategoryFilter: String, CaseIterable, Identifiable {
+    case all = "All"
+    case watermarked = "Watermarked"
+    case clean = "No Signal"
+    case inconclusive = "Inconclusive"
+    case batch = "Folder Scans"
+
+    var id: String { rawValue }
+}
+
+/// History follows the Mail pattern: a searchable record list on the left,
+/// and the selected record's details in the pane on the right. No modal
+/// sheets: the detail is always visible next to the list it came from.
 struct HistoryView: View {
     @Environment(AppState.self) private var appState
     @State private var records: [HistoryRecord] = []
     @State private var searchText = ""
+    @State private var selectedFilter: HistoryCategoryFilter = .all
     @State private var selectedID: UUID?
     @State private var showDeleteAllConfirmation = false
 
@@ -28,14 +42,14 @@ struct HistoryView: View {
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    export()
+                Menu {
+                    Button("Export JSON...") { exportJSON() }
+                    Button("Export CSV...") { exportCSV() }
                 } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
-                .keyboardShortcut("s", modifiers: [.command, .shift])
                 .disabled(filtered.isEmpty)
-                .help("Export history as JSON (Command-Shift-S)")
+                .help("Export history records")
 
                 Button {
                     showDeleteAllConfirmation = true
@@ -94,6 +108,15 @@ struct HistoryView: View {
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
 
+            Picker("Filter", selection: $selectedFilter) {
+                ForEach(HistoryCategoryFilter.allCases) { filter in
+                    Text(filter.rawValue).tag(filter)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 10)
+            .padding(.bottom, 8)
+
             Divider()
 
             if filtered.isEmpty {
@@ -103,7 +126,7 @@ struct HistoryView: View {
                         .foregroundStyle(.tertiary)
                     Text(records.isEmpty
                         ? "No checks yet. Every verdict you make is kept here with its evidence."
-                        : "No history entries match the search.")
+                        : "No history entries match the search or filter.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -156,9 +179,25 @@ struct HistoryView: View {
 
     private var filtered: [HistoryRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if query.isEmpty { return records }
         return records.filter { record in
-            record.inputType.lowercased().contains(query)
+            let matchesCategory: Bool
+            switch selectedFilter {
+            case .all:
+                matchesCategory = true
+            case .watermarked:
+                matchesCategory = record.verdictKind == .watermarked
+            case .clean:
+                matchesCategory = record.verdictKind == .notWatermarked
+            case .inconclusive:
+                matchesCategory = record.verdictKind == .inconclusive || record.verdictKind == .insufficientInput || record.verdictKind == .notAvailable
+            case .batch:
+                matchesCategory = record.verdictKind == .batchScan
+            }
+
+            guard matchesCategory else { return false }
+            if query.isEmpty { return true }
+
+            return record.inputType.lowercased().contains(query)
                 || (record.fileName?.lowercased().contains(query) ?? false)
                 || record.verdictKind.rawValue.lowercased().contains(query)
                 || record.verdictKind.historyTitle.lowercased().contains(query)
@@ -198,9 +237,9 @@ struct HistoryView: View {
         }
     }
 
-    private func export() {
+    private func exportJSON() {
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.json]
+        panel.allowedContentTypes = [UTType.json]
         panel.nameFieldStringValue = "OriginCheck-history.json"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let encoder = JSONEncoder()
@@ -208,6 +247,24 @@ struct HistoryView: View {
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(filtered) else { return }
         try? data.write(to: url, options: .atomic)
+    }
+
+    private func exportCSV() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [UTType.commaSeparatedText]
+        panel.nameFieldStringValue = "OriginCheck-history.csv"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        var lines = ["ID,Date,InputType,FileName,VerdictKind,Title,Confidence,InputHash"]
+        for record in filtered {
+            let dateStr = record.date.formatted(.iso8601)
+            let name = (record.fileName ?? "").replacingOccurrences(of: "\"", with: "\"\"")
+            let title = record.verdictKind.historyTitle.replacingOccurrences(of: "\"", with: "\"\"")
+            let line = "\"\(record.id.uuidString)\",\"\(dateStr)\",\"\(record.inputType)\",\"\(name)\",\"\(record.verdictKind.rawValue)\",\"\(title)\",\(record.confidenceValue),\"\(record.inputHash)\""
+            lines.append(line)
+        }
+        let csvText = lines.joined(separator: "\n")
+        try? csvText.write(to: url, atomically: true, encoding: .utf8)
     }
 }
 
