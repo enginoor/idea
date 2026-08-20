@@ -36,6 +36,8 @@ struct VerdictDisplay {
     /// Soft style attributions (Claude-style, ChatGPT-style, Gemini-style)
     /// from the phrase pattern database. Rendered as chips on the card.
     var familyHints: [ModelFamilyHint]
+    /// Per-sentence statistical evaluation breakdown for text checks.
+    var sentenceAnalyses: [SentenceAnalysis]
 
     /// A one-line summary for copying to the clipboard.
     var summaryText: String {
@@ -102,7 +104,8 @@ struct VerdictDisplay {
             confidenceValue: verdict.confidence.value,
             evidence: verdict.evidence,
             caveat: verdict.caveatText,
-            familyHints: verdict.familyHints
+            familyHints: verdict.familyHints,
+            sentenceAnalyses: verdict.sentenceAnalyses
         )
     }
 
@@ -158,7 +161,8 @@ struct VerdictDisplay {
             evidence: verdict.evidence,
             caveat: verdict.caveatText,
             fileName: verdict.fileName,
-            familyHints: []
+            familyHints: [],
+            sentenceAnalyses: []
         )
     }
 }

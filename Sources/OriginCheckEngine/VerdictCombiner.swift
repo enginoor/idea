@@ -48,6 +48,7 @@ public struct VerdictCombiner: Sendable {
         // Style hints merge across providers: per family, keep the strongest
         // weight and the longest phrase list.
         let familyHints = Self.mergedHints(results.flatMap(\.familyHints))
+        let sentenceAnalyses = results.flatMap(\.sentenceAnalyses)
 
         if characterCount < preset.minimumTextLength {
             evidence.append(EvidenceItem(
@@ -66,7 +67,8 @@ public struct VerdictCombiner: Sendable {
                     providersRun: providersRun,
                     evidence: evidence,
                     caveatText: Caveats.textPositive(confidenceLabel: confidence.label.rawValue),
-                    familyHints: familyHints
+                    familyHints: familyHints,
+                    sentenceAnalyses: sentenceAnalyses
                 )
             }
             return TextVerdict(
@@ -77,7 +79,8 @@ public struct VerdictCombiner: Sendable {
                 providersRun: providersRun,
                 evidence: evidence,
                 caveatText: Caveats.textTooShort,
-                familyHints: familyHints
+                familyHints: familyHints,
+                sentenceAnalyses: sentenceAnalyses
             )
         }
 
@@ -97,7 +100,8 @@ public struct VerdictCombiner: Sendable {
                 providersRun: providersRun,
                 evidence: evidence,
                 caveatText: providerCaveat ?? Caveats.textPositive(confidenceLabel: confidence.label.rawValue),
-                familyHints: familyHints
+                familyHints: familyHints,
+                sentenceAnalyses: sentenceAnalyses
             )
         }
 
@@ -115,7 +119,9 @@ public struct VerdictCombiner: Sendable {
                 effectiveTokenEstimate: characterCount / 4,
                 providersRun: providersRun,
                 evidence: evidence,
-                caveatText: providerCaveat ?? Caveats.textNegative
+                caveatText: providerCaveat ?? Caveats.textNegative,
+                familyHints: familyHints,
+                sentenceAnalyses: sentenceAnalyses
             )
         }
 
@@ -134,7 +140,8 @@ public struct VerdictCombiner: Sendable {
                 providersRun: providersRun,
                 evidence: evidence,
                 caveatText: providerCaveat ?? Caveats.textInconclusive,
-                familyHints: familyHints
+                familyHints: familyHints,
+                sentenceAnalyses: sentenceAnalyses
             )
         }
 
@@ -152,7 +159,8 @@ public struct VerdictCombiner: Sendable {
                 providersRun: providersRun,
                 evidence: evidence,
                 caveatText: Caveats.textTooShort,
-                familyHints: familyHints
+                familyHints: familyHints,
+                sentenceAnalyses: sentenceAnalyses
             )
         }
 

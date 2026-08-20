@@ -52,6 +52,29 @@ public struct EvidenceItem: Codable, Identifiable, Sendable, Equatable {
     }
 }
 
+/// An analysis result for an individual sentence in a text passage.
+public struct SentenceAnalysis: Codable, Identifiable, Sendable, Equatable {
+    public var id: UUID
+    public var sentenceText: String
+    public var wordCount: Int
+    public var aiTypicalityScore: Double
+    public var matchedPhrases: [String]
+
+    public init(
+        id: UUID = UUID(),
+        sentenceText: String,
+        wordCount: Int,
+        aiTypicalityScore: Double,
+        matchedPhrases: [String] = []
+    ) {
+        self.id = id
+        self.sentenceText = sentenceText
+        self.wordCount = wordCount
+        self.aiTypicalityScore = aiTypicalityScore
+        self.matchedPhrases = matchedPhrases
+    }
+}
+
 public struct TextVerdict: Codable, Sendable, Equatable {
     public var kind: VerdictKind
     public var confidence: Confidence
@@ -64,6 +87,8 @@ public struct TextVerdict: Codable, Sendable, Equatable {
     /// "ChatGPT-style"). Hints are evidence of *style*, never proof of a
     /// specific model. Empty when no family crossed the reporting bar.
     public var familyHints: [ModelFamilyHint]
+    /// Per-sentence statistical evaluation breakdown.
+    public var sentenceAnalyses: [SentenceAnalysis]
 
     public init(
         kind: VerdictKind,
@@ -73,7 +98,8 @@ public struct TextVerdict: Codable, Sendable, Equatable {
         providersRun: [String],
         evidence: [EvidenceItem],
         caveatText: String,
-        familyHints: [ModelFamilyHint] = []
+        familyHints: [ModelFamilyHint] = [],
+        sentenceAnalyses: [SentenceAnalysis] = []
     ) {
         self.kind = kind
         self.confidence = confidence
@@ -83,6 +109,7 @@ public struct TextVerdict: Codable, Sendable, Equatable {
         self.evidence = evidence
         self.caveatText = caveatText
         self.familyHints = familyHints
+        self.sentenceAnalyses = sentenceAnalyses
     }
 }
 
